@@ -53,6 +53,7 @@ class DatabaseHelper {
         phone TEXT UNIQUE,
         name TEXT,
         password TEXT,
+        birthDate TEXT,
         pin TEXT,
         salt TEXT,
         balance REAL DEFAULT 100.0
