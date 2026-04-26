@@ -178,14 +178,9 @@ class DatabaseHelper {
     }
 
     await db.transaction((txn) async {
-      final exists = await txn.query(
-        'transactions',
-        where: 'tx_id = ?',
-        whereArgs: [txId],
-      );
-
-      if (exists.isNotEmpty) {
-        throw Exception("⚠️ هذا التحويل مستخدم مسبقاً");
+      if (await isTransactionExists(txId)) {
+          throw Exception("⚠️ مستخدم مسبقاً");
+          }
       }
 
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -332,9 +327,9 @@ class DatabaseHelper {
 
   Future<int> countRecentTransactions(int userId) async {
     final db = await database;
-    DateTime fiveMinutesAgo = DateTime.now().subtract(
-      const Duration(minutes: 5),
-    );
+     int fiveMinutesAgo = DateTime.now().subtract(
+      const Duration(minutes: 5)).millisecondsSinceEpoch,
+    ;
 
     final List<Map<String, dynamic>> result = await db.rawQuery(
       '''
@@ -365,7 +360,7 @@ class DatabaseHelper {
   }
 
   Future<void> markAsFailed(String txId) async {
-    final db = await database;
+    final db = await databaits 
 
     await db.update(
       'transactions',
