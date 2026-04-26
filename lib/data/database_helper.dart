@@ -74,7 +74,7 @@ class DatabaseHelper {
         created_at INTEGER NOT NULL,
         sync_status TEXT DEFAULT 'pending',
         timestamp TEXT,
-        synced_at INTEGER,
+        synced_at INTEGER
         
       )
     ''');
@@ -124,7 +124,7 @@ class DatabaseHelper {
       return null;
     }
 
-    return {'id': user['id'], 'name': user['name']};
+    return {'id': user['id'], 'name': user['name']};}
 
   // ======================
   // SIGNATURE (Offline Logic)
@@ -219,9 +219,7 @@ class DatabaseHelper {
         throw Exception("❌ رصيد غير كافي");
       }
 
-      if (exists.isNotEmpty) throw Exception("مستخدم مسبقاً");
-      if (now - timestamp > 60000) throw Exception("QR انتهى");
-      if (balance < amount) throw Exception("رصيد غير كافي");
+    
       await txn.rawUpdate(
         'UPDATE users SET balance = balance - ? WHERE id = ?',
         [amount, senderId],
@@ -337,7 +335,6 @@ class DatabaseHelper {
     DateTime fiveMinutesAgo = DateTime.now().subtract(
       const Duration(minutes: 5),
     );
-    String timeLimit = fiveMinutesAgo.toIso8601String();
 
     final List<Map<String, dynamic>> result = await db.rawQuery(
       '''
@@ -352,9 +349,7 @@ class DatabaseHelper {
          }
 
     // 3. استخراج العدد من النتيجة
-    return Sqflite.firstIntValue(result) ?? 0;
-  }
-
+    
   Future<void> markAsSynced(String txId) async {
     final db = await database;
 
