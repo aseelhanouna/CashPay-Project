@@ -341,8 +341,8 @@ class _RegisterPageState extends State<RegisterPage> {
               _buildSimpleField(
                 _id,
                 "رقم الهوية",
-                Icons.id,
-                type: TextInputType.id,
+                Icons.badge,
+                type: TextInputType.number,
                 validator: (v) =>
                     (v != null && v.length >= 94) ? null : "رقم غير صالح",
               ),
