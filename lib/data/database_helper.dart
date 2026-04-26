@@ -418,3 +418,4 @@ class DatabaseHelper {
     debugPrint(" تم تحديث الرصيد للمستخدم $userId بمقدار $amount");
   }
 }
+}
