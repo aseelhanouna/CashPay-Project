@@ -101,7 +101,7 @@ class DatabaseHelper {
     );
   }
 
-  Future<Map<String, dynamic>?> login(String phone, String password) async {
+  Future<Map<String, dynamic>?> login(String id, String password) async {
     final db = await database;
 
     final result = await db.query(
@@ -431,7 +431,7 @@ class DatabaseHelper {
             }
        //دالة جلب العمليات الأخيرة
     Future<List<Map<String, dynamic>>> getRecentTransactions(int userId) async {
-      final db = await database          
+      final db = await database;        
       return await db.query('transactions', where: 'user_id = ?', orderBy: 'date DESC', limit: 5);
                                     
             }
@@ -454,7 +454,7 @@ class DatabaseHelper {
         await db.transaction((txn) async {
        await txn.rawUpdate('UPDATE users SET balance = balance + ? WHERE id = ?', [amount, userId]);
         await txn.insert('transactions', {
-            'user_id':                           
+            'user_id':  userId,                         
             'amount': amount,
             'tx_id': txId,
              'type': 'receive',
@@ -473,4 +473,5 @@ class DatabaseHelper {
        await db.update('transactions', {'is_synced': 1}, where: 'tx_id = ?', whereArgs: [txId]);
          }
 
+}
 }
