@@ -181,7 +181,7 @@ class DatabaseHelper {
       if (await isTransactionExists(txId)) {
           throw Exception("⚠️ مستخدم مسبقاً");
           }
-      }
+      
 
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - timestamp > 5 * 60 * 1000) {
@@ -327,9 +327,10 @@ class DatabaseHelper {
 
   Future<int> countRecentTransactions(int userId) async {
     final db = await database;
-     int fiveMinutesAgo = DateTime.now().subtract(
-      const Duration(minutes: 5)).millisecondsSinceEpoch,
-    ;
+
+     int fiveMinutesAgo = DateTime.now()
+         .subtract(const Duration(minutes: 5))
+             .millisecondsSinceEpoch;
 
     final List<Map<String, dynamic>> result = await db.rawQuery(
       '''
@@ -360,7 +361,7 @@ class DatabaseHelper {
   }
 
   Future<void> markAsFailed(String txId) async {
-    final db = await databaits 
+    final db = await database;
 
     await db.update(
       'transactions',
