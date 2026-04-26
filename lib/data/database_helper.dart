@@ -15,7 +15,7 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
-  // Getter واحد فقط لقاعدة البيانات
+  // Gett 
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await _initDB('cashpay.db'); // استدعاء الدالة الموحدة
@@ -50,7 +50,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        phone TEXT UNIQUE,
+        id_number TEXT UNIQUE,
         name TEXT,
         password TEXT,
         birthDate TEXT,
@@ -106,8 +106,8 @@ class DatabaseHelper {
 
     final result = await db.query(
       'users',
-      where: 'phone = ?',
-      whereArgs: [phone],
+      where: 'id = ?',
+      whereArgs: [id],
     );
 
     if (result.isEmpty) return null;
@@ -123,8 +123,7 @@ class DatabaseHelper {
       return null;
     }
 
-    return {'id': user['id'], 'name': user['name'], 'phone': user['phone']};
-  }
+    return {'id': user['id'], 'name': user['name'], 'id': user['id']};
 
   // ======================
   // SIGNATURE (Offline Logic)

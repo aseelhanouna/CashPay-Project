@@ -113,7 +113,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   
   final _formKey = GlobalKey<FormState>();
-  final _phoneController = TextEditingController();
+  final _phoneontroller = TextEditingController();
   final _passController = TextEditingController();
   bool _isLoading = false;
   bool _hidePass = true;
@@ -121,7 +121,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _idController.dispose();
     _passController.dispose();
     super.dispose();
   }
@@ -135,7 +135,7 @@ class _LoginPageState extends State<LoginPage> {
   try {
     // 2. محاولة تسجيل الدخول وجلب بيانات المستخدم
     final user = await DatabaseHelper.instance.login(
-      _phoneController.text.trim(),
+      _idController.text.trim(),
       _passController.text,
     );
 
@@ -187,8 +187,8 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               const SizedBox(height: 40),
               _buildField(
-                c: _phoneController,
-                label: "رقم الجوال",
+                c: _idController,
+                label: "رقم الهوية",
                 icon: Icons.phone,
                 enabled: !_isLoading,
                 type: TextInputType.phone,
@@ -279,16 +279,16 @@ class RegisterPage extends StatefulWidget {
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _phone = TextEditingController();
+  final _id = TextEditingController();
   final _date = TextEditingController();
   final _pass = TextEditingController();
-  final _pin = TextEditingController();
+  final _pin = TextEditingController();o
   bool _isLoading = false;
 
   @override
   void dispose() {
     _name.dispose();
-    _phone.dispose();
+    _id.dispose();
     _date.dispose();
     _pass.dispose();
     _pin.dispose();
@@ -309,7 +309,7 @@ class _RegisterPageState extends State<RegisterPage> {
     try {
       // الـ Hashing يتم داخل DatabaseHelper لحماية الـ PIN و Password
       await DatabaseHelper.instance.createUser({
-        'phone': _phone.text.trim(),
+        'id': _id.text.trim(),
         'name': _name.text.trim(),
         'password': _pass.text,
         'pin': _pin.text.trim(),
@@ -338,12 +338,12 @@ class _RegisterPageState extends State<RegisterPage> {
             children: [
               _buildSimpleField(_name, "الاسم الكامل", Icons.person),
               _buildSimpleField(
-                _phone,
-                "رقم الجوال",
-                Icons.phone,
-                type: TextInputType.phone,
+                _id,
+                "رقم الهوية",
+                Icons.id,
+                type: TextInputType.id,
                 validator: (v) =>
-                    (v != null && v.length >= 9) ? null : "رقم غير صالح",
+                    (v != null && v.length >= 94) ? null : "رقم غير صالح",
               ),
               _buildDateField(),
               _buildSimpleField(
@@ -383,7 +383,7 @@ class _RegisterPageState extends State<RegisterPage> {
             context: context,
             initialDate: DateTime(2000),
             firstDate: DateTime(1950),
-            lastDate: DateTime.now(),
+            lastDate: DateTime(2009),
           );
           if (d != null) _date.text = DateFormat('yyyy-MM-dd').format(d);
         },
