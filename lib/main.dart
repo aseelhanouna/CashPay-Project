@@ -144,7 +144,7 @@ class _LoginPageState extends State<LoginPage> {
       final prefs = await SharedPreferences.getInstance();
       final int userId = user['id']; // استخراج الـ ID من قاعدة البيانات
 
-      // ✅ حفظ بيانات الجلسة (بما فيها الـ ID الذي تحتاجه صفحة الرصيد)
+      // حفظ بيانات الجلسة (بما فيها
       await prefs.setBool('isLoggedIn', true);
       await prefs.setInt('user_id', userId); // تأكد من استخدام 'user_id' كما سميناها في SessionManager
       await prefs.setString('userName', user['name']);
@@ -189,9 +189,10 @@ class _LoginPageState extends State<LoginPage> {
               _buildField(
                 c: _idController,
                 label: "رقم الهوية",
-                icon: Icons.phone,
+                icon: Icons.badge,
                 enabled: !_isLoading,
-                type: TextInputType.phone,
+                type: TextInputType.number,
+          
                 validator: (v) =>
                     (v != null && v.length >= 9) ? null : "رقم غير صحيح",
               ),
@@ -282,7 +283,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _id = TextEditingController();
   final _date = TextEditingController();
   final _pass = TextEditingController();
-  final _pin = TextEditingController();o
+  final _pin = TextEditingController();
   bool _isLoading = false;
 
   @override
