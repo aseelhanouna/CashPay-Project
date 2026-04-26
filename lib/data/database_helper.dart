@@ -74,7 +74,8 @@ class DatabaseHelper {
         created_at INTEGER NOT NULL,
         sync_status TEXT DEFAULT 'pending',
         timestamp TEXT,
-        synced_at INTEGER
+        synced_at INTEGER,
+        
       )
     ''');
     await db.execute('''
@@ -123,7 +124,7 @@ class DatabaseHelper {
       return null;
     }
 
-    return {'id': user['id'], 'name': user['name'], 'id': user['id']};
+    return {'id': user['id'], 'name': user['name']};
 
   // ======================
   // SIGNATURE (Offline Logic)
@@ -342,11 +343,13 @@ class DatabaseHelper {
       '''
     SELECT COUNT(*) as total 
     FROM transactions 
-    WHERE user_id = ? 
-    AND timestamp > ?
-  ''',
-      [userId, timeLimit],
-    );
+    WHERE (sender_id = ? OR receiver_id = ?)
+     AND created_at > ?
+       ''',
+     [userId, userId, fiveMinutesAgo]);
+
+      return Sqflite.firstIntValue(result) ?? 0;
+         }
 
     // 3. استخراج العدد من النتيجة
     return Sqflite.firstIntValue(result) ?? 0;
@@ -417,61 +420,4 @@ class DatabaseHelper {
 
     debugPrint(" تم تحديث الرصيد للمستخدم $userId بمقدار $amount");
   }
-}
-  // دالة جلب الرصيد
-    Future<double> getUserBalance(int userId) async {
-      final db = await database;
-      final res = await db.query('users', columns: ['balance'], where: 'id = ?', whereArgs: [userId]);
-                return res.isNotEmpty ? (res.first['balance'] as double) : 0.0;
-        }
-       // دالة تحديث الرصيد
-    Future<void> updateUserBalance(int userId, double newBalance) async {
-      final db = await database;
-      await db.update('users', {'balance': newBalance}, where: 'id = ?', whereArgs: [userId]);
-            }
-       //دالة جلب العمليات الأخيرة
-    Future<List<Map<String, dynamic>>> getRecentTransactions(int userId) async {
-      final db = await database;        
-      return await db.query('transactions', where: 'user_id = ?', orderBy: 'date DESC', limit: 5);
-                                    
-            }
-        // دالة جلب كل العمليات
-    Future<List<Map<String, dynamic>>> getUserTransactions(int userId) async {
-       final db = await database;
-      return await db.query('transactions', where: 'user_id = ?', orderBy: 'date DESC');
-             }
-
-      // دالة التحقق من وجود عملية (لمنع التكرار)
-     Future<bool> isTransactionExists(String txId) async {
-       final db = await database;
-      final res = await db.query('transactions', where: 'tx_id = ?', whereArgs: [txId]);
-       return res.isNotEmpty;
-           }
-
-         // دالة استقبال العملا
-     Future<void> receiveTokens({required int userId, required double amount, required String txId}) async {
-       final db = await database;
-        await db.transaction((txn) async {
-       await txn.rawUpdate('UPDATE users SET balance = balance + ? WHERE id = ?', [amount, userId]);
-        await txn.insert('transactions', {
-            'user_id':  userId,                         
-            'amount': amount,
-            'tx_id': txId,
-             'type': 'receive',
-             'date': DateTime.now().toIso8601String(),                                                                                                                                     
-              'is_synced': 0
-                });
-                 });
-               }
-                  // دوال التزامن (لخدمة SyncService)
-      Future<List<Map<String, dynamic>>> getPendingTransactions() async {
-        final db = await database;
-        return await db.query('transactions', where: 'is_synced = ?', whereArgs: [0]);
-      }
-      Future<void> markAsSynced(String txId) async {
-        final db = await database;
-       await db.update('transactions', {'is_synced': 1}, where: 'tx_id = ?', whereArgs: [txId]);
-         }
-
-}
 }
