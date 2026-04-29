@@ -92,7 +92,7 @@ class DatabaseHelper {
   // AUTH & USER
   // ======================
 
-  // تصحيح: استخدام database (الـ getter) بدلاً من db
+  
   Future<int> createUser(Map<String, dynamic> user) async {
     final dbClient = await database;
     return await dbClient.insert(
@@ -102,7 +102,7 @@ class DatabaseHelper {
     );
   }
 
-  Future<Map<String, dynamic>?> login(String id, String password) async {
+  Future<Map<String, dynamic>?> login(String idNumber, String password) async {
     final db = await database;
 
     final result = await db.query(
