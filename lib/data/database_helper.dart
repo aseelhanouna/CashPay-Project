@@ -107,8 +107,8 @@ class DatabaseHelper {
 
     final result = await db.query(
       'users',
-      where: 'id = ?',
-      whereArgs: [id],
+      where: 'id_number = ?',
+      whereArgs: [idNumber],
     );
 
     if (result.isEmpty) return null;
