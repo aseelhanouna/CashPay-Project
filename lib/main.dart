@@ -309,10 +309,15 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
     try {
       // الـ Hashing يتم داخل DatabaseHelper لحماية الـ PIN و Password
+ final salt =      DateTime.now().millisecondsSinceEpoch.toString( );
+
+ final hashedPassword = sha256
+    .convert(utf8.encode(_pass.text + salt))
+    .toString();
       await DatabaseHelper.instance.createUser({
         'id_number': _id.text.trim(),
         'name': _name.text.trim(),
-        'password': _pass.text,
+        'password': hashedPassword,
         'pin': _pin.text.trim(),
         'birthDate': _date.text,
       });
