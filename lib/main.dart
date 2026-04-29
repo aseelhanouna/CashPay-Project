@@ -322,6 +322,7 @@ class _RegisterPageState extends State<RegisterPage> {
         'password': hashedPassword,
         'pin': _pin.text.trim(),
         'birthDate': _date.text,
+        'salt': salt,
       });
      
       if (!mounted) return;
