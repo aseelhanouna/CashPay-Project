@@ -59,25 +59,32 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
         throw Exception("الرجاء إدخال مبلغ صحيح.");
       }
 
-      final data = {
-        'amount': amount,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-        'userId': widget.userId,
-      };
+      final String txId = "TX${DateTime.now().millisecondsSinceEpoch}"; 
+    final int senderId = widget.userId;
+    final int receiverId = 0; 
+    final int timestamp = DateTime.now().millisecondsSinceEpoch;
 
-      final plainJson = jsonEncode(data);
-      final signature = CryptoHelper.sign(plainJson);
+    
+    final String rawData = "$txId|$senderId|$receiverId|$amount|$timestamp";
+    final String signature = CryptoHelper.sign(rawData);
 
-      final qrPayload = {'data': plainJson, 'signature': signature};
+   
+    final qrPayload = {
+      'tx_id': txId,
+      'sender_id': senderId,
+      'receiver_id': receiverId,
+      'amount': amount,
+      'timestamp': timestamp,
+      'signature': signature,
+    };
 
-      setState(() {
-        _qrData = jsonEncode(qrPayload);
-      });
-    } catch (e) {
-      // Re-throw to be caught by the calling function's catch block
-      rethrow;
-    }
+    setState(() {
+      _qrData = jsonEncode(qrPayload);
+    });
+  } catch (e) {
+    rethrow;
   }
+}
 
   Future<void> _loadBalance() async {
     int? myId = await SessionManager.getUserId();
