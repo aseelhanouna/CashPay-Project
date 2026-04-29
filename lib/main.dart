@@ -316,8 +316,20 @@ class _RegisterPageState extends State<RegisterPage> {
         'pin': _pin.text.trim(),
         'birthDate': _date.text,
       });
-      if (mounted) Navigator.pop(context);
+     
       if (!mounted) return;
+                       
+                                   ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+     content: Text("تم إنشاء الحساب بنجاح"),
+      backgroundColor: Colors.green,
+     duration: Duration(seconds: 2),
+   ),
+ );
+
+ await Future.delayed(const Duration(seconds:      2));
+
+Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
