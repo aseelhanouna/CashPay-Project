@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/session_manager.dart';  
 import 'package:firebase_core/firebase_core.dart';   
 import 'package:myapp/ui/dashboard_page.dart';
+import 'dart:convert';         
+import 'package:crypto/crypto.dart'; 
 
 
  void main() async {
