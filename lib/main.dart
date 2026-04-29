@@ -344,7 +344,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 Icons.badge,
                 type: TextInputType.number,
                 validator: (v) =>
-                    (v != null && v.length >= 94) ? null : "رقم غير صالح",
+                    (v != null && v.length >= 9) ? null : "رقم غير صالح",
               ),
               _buildDateField(),
               _buildSimpleField(
