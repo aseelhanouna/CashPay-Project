@@ -310,7 +310,7 @@ class _RegisterPageState extends State<RegisterPage> {
     try {
       // الـ Hashing يتم داخل DatabaseHelper لحماية الـ PIN و Password
       await DatabaseHelper.instance.createUser({
-        'id': _id.text.trim(),
+        'id_number': _id.text.trim(),
         'name': _name.text.trim(),
         'password': _pass.text,
         'pin': _pin.text.trim(),
