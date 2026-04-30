@@ -41,9 +41,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   // =========================
   void _onDetect(BarcodeCapture capture) async {
     if (capture.barcodes.isEmpty || isProcessing) return;
-
     final raw = capture.barcodes.first.rawValue;
-
     if (raw == null) {
       _handleError("QR غير صالح");
       return;
@@ -52,64 +50,42 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     setState(() => isProcessing = true);
 
     try {
+     
       if (await SessionManager.isBlocked()) {
-        int seconds = ((await SessionManager.getRemainingTime()) / 1000)
-            .round();
+        int seconds = ((await SessionManager.getRemainingTime()) / 1000).round();
         throw Exception("🚨 التطبيق محظور ($seconds ثانية متبقية)");
       }
 
-      if (await SessionManager.isBlocked()) {
-        _handleError("التطبيق في وضع القراءة فقط");
-        return;
-      }
-
+     
       final data = jsonDecode(raw);
+      final String txId = data['tx_id']?.toString() ?? '';
+      final int senderId = (num.tryParse(data['sender_id']?.toString() ?? '') ?? 0).toInt();
+      final int receiverId = (num.tryParse(data['receiver_id']?.toString() ?? '') ?? 0).toInt();
+      final double amount = (num.tryParse(data['amount']?.toString() ?? '') ?? 0.0).toDouble();
+      final int timestamp = (num.tryParse(data['timestamp']?.toString() ?? '') ?? 0).toInt();
+      final String signature = data['signature']?.toString() ?? '';
 
-      final String txId = data['tx_id'] ?? '';
-
-      final int senderId = int.parse(data['sender_id'].toString());
-      final int receiverId = int.parse(data['receiver_id'].toString());
-      final double amount = double.parse(data['amount'].toString());
-      final int timestamp = int.parse(data['timestamp'].toString());
-      final String signature = data['signature'] ?? '';
-
+    
       if (txId.isEmpty || senderId <= 0 || amount <= 0 || signature.isEmpty) {
-        throw Exception("QR غير صالح");
+        throw Exception("بيانات الرمز غير مكتملة");
       }
-
-      if (amount > 50) {
-        throw Exception("مبلغ غير مسموح");
-      }
-
-      if (receiverId != widget.receiverId) {
-        throw Exception("هذا QR ليس لك");
-      }
+      if (amount > 50) throw Exception("مبلغ غير مسموح");
+      if (receiverId != widget.receiverId) throw Exception("هذا الرمز مخصص لمستلم آخر");
 
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - timestamp > 5 * 60 * 1000) {
-        throw Exception("QR منتهي");
-      }
+      if (now - timestamp > 5 * 60 * 1000) throw Exception("الرمز منتهي الصلاحية");
 
       final exists = await DatabaseHelper.instance.isTransactionExists(txId);
+      if (exists) throw Exception("هذا الرمز تم استخدامه مسبقاً");
 
-      if (exists) {
-        throw Exception("مستخدم مسبقاً");
-      }
-
+      
       final rawData = "$txId|$senderId|$receiverId|$amount|$timestamp";
-
       final expected = generateSignature(rawData, senderId);
+      if (expected != signature) throw Exception("توقيع غير صالح (تلاعب بالبيانات)");
 
-      if (expected != signature) {
-        throw Exception("QR معدل");
-      }
-
+      
       await _controller.stop();
-
-      final confirmed = await _confirmDialog(
-        senderId: senderId,
-        amount: amount,
-      );
+      final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
 
       if (!confirmed) {
         await _controller.start();
@@ -117,40 +93,34 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
         return;
       }
 
-      try {
-        // 1. الحفظ في قاعدة البيانات المحلية (SQLite) فوراً (Offline-First)
-        // الحالة الافتراضية ستكون 'pending' داخل الدالة
-        await DatabaseHelper.instance.receiveTokens(
-          txId: txId,
-          senderId: senderId,
-          receiverId: receiverId,
-          amount: amount,
-          signature: signature,
-          timestamp: timestamp,
-        );
+     
+      await DatabaseHelper.instance.receiveTokens(
+        txId: txId,
+        senderId: senderId,
+        receiverId: receiverId,
+        amount: amount,
+        signature: signature,
+        timestamp: timestamp,
+      );
 
-        // 2. محاولة المزامنة الفورية مع السيرفر في الخلفية
-        // لا نستخدم 'await' هنا لكي لا نُعطل المستخدم إذا كان الإنترنت بطيئاً
-        SyncService.syncTransactions(widget.receiverId);
+      
+      SyncService.syncTransactions(widget.receiverId);
 
-        // 3. إظهار النجاح للمستخدم بناءً على الحفظ المحلي
-        _showSuccess(amount);
+      _showSuccess(amount);
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) Navigator.pop(context);
+      });
 
-        // العودة للداشبورد بعد النجاح
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) Navigator.pop(context);
-        });
-      } catch (e) {
-        _handleError("فشل حفظ العملية محلياً: ${e.toString()}");
-      } finally {
-        setState(() => isProcessing = false);
-      }
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar
-      (SnackBar(content: Text("فشلت العملية: ${e.toString()}")));
+      
+      _handleError(e.toString().replaceFirst("Exception: ", ""));
+      // إعادة تشغيل الكاميرا في حال الفشل
+      await _controller.start(); 
+    } finally {
+      if (mounted) setState(() => isProcessing = false);
     }
-  } 
+  }
+} 
   // =========================
   // 🔐 CONFIRM DIALOG
   // =========================
