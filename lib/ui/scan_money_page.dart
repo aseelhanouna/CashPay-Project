@@ -69,7 +69,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
         throw Exception("بيانات الرمز غير مكتملة");
       }
       if (amount > 50) throw Exception("مبلغ غير مسموح");
-      if (receiverId != widget.receiverId) throw Exception("هذا الرمز ليس لك");
+      
 
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - timestamp > 5 * 60 * 1000) throw Exception("QR منتهي الصلاحية");
