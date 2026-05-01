@@ -311,6 +311,7 @@ Future<void> _completeLogin(int userId, String userName) async {
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
+
   @override
   State<RegisterPage> createState() => _RegisterPageState();
 }
@@ -333,6 +334,14 @@ class _RegisterPageState extends State<RegisterPage> {
     _pin.dispose();
     super.dispose();
   }
+ void _showSuccess(String msg) {
+  _showSnackBar(msg, Colors.green);
+}
+
+void _showError(String msg) {
+  _showSnackBar(msg, Colors.red);
+}
+
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
