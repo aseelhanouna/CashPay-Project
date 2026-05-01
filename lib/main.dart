@@ -11,10 +11,9 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-
- void main() async {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // هذا هو المفتاح الذي يربط التطبيق بالسيرفر
+  await Firebase.initializeApp(); 
   runApp(const MyApp());
 }
 
@@ -65,20 +64,16 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _checkAuth() async {
     await Future.delayed(const Duration(milliseconds: 1200));
-    
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
     bool isBlocked = prefs.getBool('is_blocked') ?? false;
     if (isBlocked && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const BlockedPage()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BlockedPage()));
       return; 
     }
 
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-    int userId = prefs.getInt('userId') ?? 0;
+    int userId = prefs.getInt('user_id') ?? 0;
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -88,19 +83,13 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
       );
     }
-}
+  }
 
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: Color(0xFF001F3F),
-      body: Center(
-        child: Icon(
-          Icons.account_balance_wallet,
-          size: 100,
-          color: Colors.white,
-        ),
-      ),
+      body: Center(child: Icon(Icons.account_balance_wallet, size: 100, color: Colors.white)),
     );
   }
 }
@@ -108,110 +97,72 @@ class _SplashScreenState extends State<SplashScreen> {
 // ---------------- LoginPage ----------------
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
-
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
 class _LoginPageState extends State<LoginPage> {
-  
   final _formKey = GlobalKey<FormState>();
   final _idController = TextEditingController();
   final _passController = TextEditingController();
   bool _isLoading = false;
   bool _hidePass = true;
 
-
-  @override
-  void dispose() {
-    _idController.dispose();
-    _passController.dispose();
-    super.dispose();
-  }
   void _showSnackBar(String msg, Color color) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(msg), backgroundColor: color)
-  );
-}
-
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+  }
 
   Future<void> _handleLogin() async {
-  // 1. التحقق من الحقول أولاً
-  if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
 
-  setState(() => _isLoading = true);
+    try {
+      final String idInput = _idController.text.trim();
+      final String passwordInput = _passController.text;
 
-  try {
-    final String idInput = _idController.text.trim();
-    final String passwordInput = _passController.text;
+      final user = await DatabaseHelper.instance.login(idInput, passwordInput);
 
-    // 2. محاولة تسجيل الدخول محلياً (من SQLite)
-    final user = await DatabaseHelper.instance.login(idInput, passwordInput);
-
-    if (user != null) {
-      // ✅ الحالة الأولى: الحساب موجود على الجهاز (الدخول العادي)
-      await _completeLogin(user['id'], user['name']);
-    } 
-    else {
-      // 🌐 الحالة الثانية: الحساب غير موجود محلياً (ربما تم حذف التطبيق) -> نبحث في Firebase
-      debugPrint("المستخدم غير موجود محلياً، جاري التحقق من السحابة...");
-
-      final cloudDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(idInput)
-          .get();
-
-      if (cloudDoc.exists) {
-        final cloudData = cloudDoc.data()!;
-        
-        // التحقق من كلمة المرور (باستخدام رقم الهوية كـ Salt ثابت)
-        String inputHash = sha256.convert(utf8.encode(passwordInput + idInput)).toString();
-
-        if (inputHash == cloudData['password']) {
-          // ✅ كلمة المرور صحيحة! نعيد حفظ البيانات في الجهاز (إعادة توطين)
-          await DatabaseHelper.instance.createUser({
-            'id_number': idInput,
-            'name': cloudData['name'],
-            'password': cloudData['password'],
-            'salt': idInput, 
-            'balance': (cloudData['balance'] as num).toDouble(),
-            'birthDate': cloudData['birthDate'] ?? '',
-          });
-
-          // بعد الحفظ المحلي، ندخل التطبيق باستخدام رقم الهوية كـ ID
-          await _completeLogin(int.parse(idInput), cloudData['name']);
-        } else {
-          _showSnackBar("كلمة المرور غير صحيحة", Colors.orange);
-        }
+      if (user != null) {
+        await _completeLogin(user['id'], user['name']);
       } else {
-        // إذا لم يوجد في الجهاز ولا في السحاب
-        _showSnackBar("بيانات الدخول غير صحيحة أو الحساب غير موجود", Colors.orange);
+        final cloudDoc = await FirebaseFirestore.instance.collection('users').doc(idInput).get();
+        if (cloudDoc.exists) {
+          final cloudData = cloudDoc.data()!;
+          String inputHash = sha256.convert(utf8.encode(passwordInput + idInput)).toString();
+
+          if (inputHash == cloudData['password']) {
+            await DatabaseHelper.instance.createUser({
+              'id_number': idInput,
+              'name': cloudData['name'],
+              'password': cloudData['password'],
+              'salt': idInput, 
+              'balance': (cloudData['balance'] as num).toDouble(),
+              'birthDate': cloudData['birthDate'] ?? '',
+            });
+            await _completeLogin(int.parse(idInput), cloudData['name']);
+          } else {
+            _showSnackBar("كلمة المرور غير صحيحة", Colors.orange);
+          }
+        } else {
+          _showSnackBar("بيانات الدخول غير صحيحة أو الحساب غير موجود", Colors.orange);
+        }
       }
+    } catch (e) {
+      _showSnackBar("حدث خطأ في الاتصال", Colors.red);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-  } catch (e) {
-    debugPrint("Login Error: $e");
-    _showSnackBar("حدث خطأ في الاتصال أو البيانات", Colors.red);
-  } finally {
-    if (mounted) setState(() => _isLoading = false);
   }
-}
 
-// دالة مساعدة لإكمال عملية الدخول (منعاً لتكرار الكود)
-Future<void> _completeLogin(int userId, String userName) async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setBool('isLoggedIn', true);
-  await prefs.setInt('user_id', userId);
-  await prefs.setString('userName', userName);
-
-  if (!mounted) return;
-
-  Navigator.pushAndRemoveUntil(
-    context,
-    MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)),
-    (route) => false,
-  );
-}
-
+  Future<void> _completeLogin(int userId, String userName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setInt('user_id', userId);
+    await prefs.setString('userName', userName);
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)), (route) => false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -224,372 +175,6 @@ Future<void> _completeLogin(int userId, String userName) async {
           child: Column(
             children: [
               const SizedBox(height: 40),
-              _buildField(
-                c: _idController,
-                label: "رقم الهوية",
-                icon: Icons.badge,
-                enabled: !_isLoading,
-                type: TextInputType.number,
-          
-                validator: (v) =>
-                    (v != null && v.length >= 9) ? null : "رقم غير صحيح",
-              ),
+              _buildField(c: _idController, label: "رقم الهوية", icon: Icons.badge, enabled: !_isLoading, type: TextInputType.number, validator: (v) => (v != null && v.length >= 9) ? null : "رقم غير صحيح"),
               const SizedBox(height: 20),
-              _buildField(
-                c: _passController,
-                label: "كلمة المرور",
-                icon: Icons.lock,
-                isPass: true,
-                hide: _hidePass,
-                enabled: !_isLoading,
-                onToggle: () => setState(() => _hidePass = !_hidePass),
-              ),
-              const SizedBox(height: 30),
-              _buildButton(text: "دخول", onPressed: _handleLogin),
-              TextButton(
-                onPressed: _isLoading
-                    ? null
-                    : () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const RegisterPage()),
-                      ),
-                child: const Text("إنشاء حساب جديد"),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildField({
-    required TextEditingController c,
-    required String label,
-    required IconData icon,
-    bool isPass = false,
-    bool hide = false,
-    bool enabled = true,
-    VoidCallback? onToggle,
-    TextInputType type = TextInputType.text,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: c,
-      obscureText: isPass ? hide : false,
-      keyboardType: type,
-      enabled: enabled,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        suffixIcon: isPass
-            ? IconButton(
-                icon: Icon(hide ? Icons.visibility_off : Icons.visibility),
-                onPressed: onToggle,
-              )
-            : null,
-      ),
-      validator: validator ?? (v) => (v == null || v.isEmpty) ? "مطلوب" : null,
-    );
-  }
-
-  Widget _buildButton({required String text, required VoidCallback onPressed}) {
-    return ElevatedButton(
-      onPressed: _isLoading ? null : onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF001F3F),
-        minimumSize: const Size(double.infinity, 55),
-      ),
-      child: _isLoading
-          ? const CircularProgressIndicator(color: Colors.white)
-          : Text(text, style: const TextStyle(color: Colors.white)),
-          
-    );
-  }
-}
-
-// ---------------- Register ----------------
-class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key});
-
-
-  @override
-  State<RegisterPage> createState() => _RegisterPageState();
-}
-
-class _RegisterPageState extends State<RegisterPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _name = TextEditingController();
-  final _id = TextEditingController();
-  final _date = TextEditingController();
-  final _pass = TextEditingController();
-  final _pin = TextEditingController();
-  bool _isLoading = false;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _id.dispose();
-    _date.dispose();
-    _pass.dispose();
-    _pin.dispose();
-    super.dispose();
-  }
- void _showSuccess(String msg) {
-  _showSnackBar(msg, Colors.green);
-}
-
-void _showError(String msg) {
-  _showSnackBar(msg, Colors.red);
-}
-
-
-  Future<void> _handleRegister() async {
-    if (!_formKey.currentState!.validate()) return;
- // التحقق من تاريخ الميلاد
-    if (_date.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("يرجى اختيار تاريخ الميلاد")),
-      );
-      return;
-    
-
-  String nationalId = _idController.text.trim();
-  String password = _passwordController.text;
-
-  try {
-    // 1. التحقق من Firebase Firestore أولاً (لمنع التكرار العالمي)
-    final userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(nationalId)
-        .get();
-
-    if (userDoc.exists) {
-      throw Exception("رقم الهوية هذا مسجل مسبقاً في النظام السحابي");
-    }
-
-    // 2. التشفير باستخدام Salt ثابت (رقم الهوية) لضمان صحة الدخول مستقبلاً
-    String hashedPassword = sha256.convert(utf8.encode(password + nationalId)).toString();
-
-    // 3. الرفع إلى Firebase (المصدر الموثوق الدائم)
-    await FirebaseFirestore.instance.collection('users').doc(nationalId).set({
-      'id_number': nationalId,
-      'name': _nameController.text,
-      'password': hashedPassword,
-      'balance': 100.0, // الرصيد الابتدائي
-      'created_at': FieldValue.serverTimestamp(),
-    });
-
-    // 4. الحفظ في SQLite المحلي (لدعم العمل أوفلاين)
-    await DatabaseHelper.instance.createUser({
-      'id_number': nationalId,
-      'name': _nameController.text,
-      'password': hashedPassword,
-      'salt': nationalId, // حفظ الملح لعملية الدخول أوفلاين
-      'balance': 100.0,
-    });
-
-    _showSuccess("تم إنشاء الحساب بنجاح");
-  } catch (e) {
-    _showError(e.toString());
-  }
-
-   }
-
-    setState(() => _isLoading = true);
-    try {
-      // الـ Hashing يتم داخل DatabaseHelper لحماية الـ PIN و Password
- final salt =      DateTime.now().millisecondsSinceEpoch.toString( );
-
- final hashedPassword = sha256
-    .convert(utf8.encode(_pass.text + salt))
-    .toString();
-      await DatabaseHelper.instance.createUser({
-        'id_number': _id.text.trim(),
-        'name': _name.text.trim(),
-        'password': hashedPassword,
-        'pin': _pin.text.trim(),
-        'birthDate': _date.text,
-        'salt': salt,
-      });
-     
-      if (!mounted) return;
-                       
-                                   ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-     content: Text("تم إنشاء الحساب بنجاح"),
-      backgroundColor: Colors.green,
-     duration: Duration(seconds: 2),
-   ),
- );
-
- await Future.delayed(const Duration(seconds:      2));
-
-Navigator.pop(context);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-      );
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("إنشاء حساب")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _buildSimpleField(_name, "الاسم الكامل", Icons.person),
-              _buildSimpleField(
-                _id,
-                "رقم الهوية",
-                Icons.badge,
-                type: TextInputType.number,
-                validator: (v) =>
-                    (v != null && v.length >= 9) ? null : "رقم غير صالح",
-              ),
-              _buildDateField(),
-              _buildSimpleField(
-                _pass,
-                "كلمة المرور",
-                Icons.lock,
-                isPass: true,
-                validator: (v) =>
-                    (v != null && v.length >= 6) ? null : "ضعيفة (6 خانات)",
-              ),
-              _buildSimpleField(
-                _pin,
-                "PIN (4 أرقام)",
-                Icons.dialpad,
-                type: TextInputType.number,
-                isPass: true,
-                validator: (v) =>
-                    (v != null && v.length == 4) ? null : "يجب 4 أرقام",
-              ),
-              const SizedBox(height: 25),
-              _buildRegButton(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateField() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: TextFormField(
-        controller: _date,
-        readOnly: true,
-        onTap: () async {
-          DateTime? d = await showDatePicker(
-            context: context,
-            initialDate: DateTime(2000),
-            firstDate: DateTime(1950),
-            lastDate: DateTime(2009),
-          );
-          if (d != null) _date.text = DateFormat('yyyy-MM-dd').format(d);
-        },
-        decoration: const InputDecoration(
-          labelText: "تاريخ الميلاد",
-          prefixIcon: Icon(Icons.calendar_today),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSimpleField(
-    TextEditingController c,
-    String l,
-    IconData i, {
-    bool isPass = false,
-    TextInputType type = TextInputType.text,
-    String? Function(String?)? validator,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
-      child: TextFormField(
-        controller: c,
-        obscureText: isPass,
-        keyboardType: type,
-        decoration: InputDecoration(labelText: l, prefixIcon: Icon(i)),
-        validator:
-            validator ?? (v) => (v == null || v.isEmpty) ? "مطلوب" : null,
-      ),
-    );
-  }
-
-  Widget _buildRegButton() {
-    return ElevatedButton(
-      onPressed: _isLoading ? null : _handleRegister,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF001F3F),
-        minimumSize: const Size(double.infinity, 55),
-      ),
-      child: _isLoading
-          ? const CircularProgressIndicator(color: Colors.white)
-          : const Text("إنشاء الحساب", style: TextStyle(color: Colors.white)),
-    );
-  }
-}
-
-
-// صفحة الحظر التي تظهر للمستخدم المشبوه
-class BlockedPage extends StatelessWidget {
-  const BlockedPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(30.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // أيقونة قفل باللون الأحمر للتنبيه
-              const Icon(
-                Icons.report_problem_rounded,
-                color: Colors.red,
-                size: 100,
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                "تم حظر الحساب!",
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF001F3F), // لون كحلي متناسق مع تطبيقك
-                ),
-              ),
-              const SizedBox(height: 15),
-              const Text(
-                "نعتذر منك، لقد تم تجميد حسابك مؤقتاً بسبب رصد عمليات غير اعتيادية متكررة. يرجى مراجعة الدعم الفني لفك الحظر.",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 40),
-              // زر للخروج من التطبيق
-              ElevatedButton(
-                onPressed: () {
-                  // هنا يمكن إضافة كود لإغلاق التطبيق نهائياً
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF001F3F),
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
-                ),
-                child: const Text("موافق", style: TextStyle(color: Colors.white)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+              _buildField(c: _passController, label: "كلمة المرور", icon: Icons.lock, isPass: true, hide: _hidePass, enabled: !_isLoading, onToggle: () => setState(() => _hidePass = !_hidePass)),
