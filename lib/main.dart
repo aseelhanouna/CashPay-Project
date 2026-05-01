@@ -131,51 +131,80 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _handleLogin() async {
   // 1. التحقق من الحقول أولاً
   if (!_formKey.currentState!.validate()) return;
-  
+
   setState(() => _isLoading = true);
 
   try {
-    // 2. محاولة تسجيل الدخول وجلب بيانات المستخدم
-    final user = await DatabaseHelper.instance.login(
-      _idController.text.trim(),
-      _passController.text,
-    );
+    final String idInput = _idController.text.trim();
+    final String passwordInput = _passController.text;
 
-    // 3. إذا نجح تسجيل الدخول
-    if (user != null && mounted) {
-      final prefs = await SharedPreferences.getInstance();
-      final int userId = user['id']; // استخراج الـ ID من قاعدة البيانات
+    // 2. محاولة تسجيل الدخول محلياً (من SQLite)
+    final user = await DatabaseHelper.instance.login(idInput, passwordInput);
 
-      // حفظ بيانات الجلسة (بما فيها
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setInt('user_id', userId); // تأكد من استخدام 'user_id' كما سميناها في SessionManager
-      await prefs.setString('userName', user['name']);
+    if (user != null) {
+      // ✅ الحالة الأولى: الحساب موجود على الجهاز (الدخول العادي)
+      await _completeLogin(user['id'], user['name']);
+    } 
+    else {
+      // 🌐 الحالة الثانية: الحساب غير موجود محلياً (ربما تم حذف التطبيق) -> نبحث في Firebase
+      debugPrint("المستخدم غير موجود محلياً، جاري التحقق من السحابة...");
 
-      // 4. الانتقال لصفحة اللوحة الرئيسية (Dashboard)
-      if (!mounted) return;
+      final cloudDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(idInput)
+          .get();
 
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)),
-        (route) => false,
-      );
-    } else {
-      // إذا كانت البيانات خاطئة
-      _showSnackBar("بيانات الدخول غير صحيحة", Colors.orange);
+      if (cloudDoc.exists) {
+        final cloudData = cloudDoc.data()!;
+        
+        // التحقق من كلمة المرور (باستخدام رقم الهوية كـ Salt ثابت)
+        String inputHash = sha256.convert(utf8.encode(passwordInput + idInput)).toString();
+
+        if (inputHash == cloudData['password']) {
+          // ✅ كلمة المرور صحيحة! نعيد حفظ البيانات في الجهاز (إعادة توطين)
+          await DatabaseHelper.instance.createUser({
+            'id_number': idInput,
+            'name': cloudData['name'],
+            'password': cloudData['password'],
+            'salt': idInput, 
+            'balance': (cloudData['balance'] as num).toDouble(),
+            'birthDate': cloudData['birthDate'] ?? '',
+          });
+
+          // بعد الحفظ المحلي، ندخل التطبيق باستخدام رقم الهوية كـ ID
+          await _completeLogin(int.parse(idInput), cloudData['name']);
+        } else {
+          _showSnackBar("كلمة المرور غير صحيحة", Colors.orange);
+        }
+      } else {
+        // إذا لم يوجد في الجهاز ولا في السحاب
+        _showSnackBar("بيانات الدخول غير صحيحة أو الحساب غير موجود", Colors.orange);
+      }
     }
   } catch (e) {
     debugPrint("Login Error: $e");
-    _showSnackBar("حدث خطأ، تأكد من الاتصال", Colors.red);
+    _showSnackBar("حدث خطأ في الاتصال أو البيانات", Colors.red);
   } finally {
     if (mounted) setState(() => _isLoading = false);
   }
 }
 
-  void _showSnackBar(String msg, Color color) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
-  }
+// دالة مساعدة لإكمال عملية الدخول (منعاً لتكرار الكود)
+Future<void> _completeLogin(int userId, String userName) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('isLoggedIn', true);
+  await prefs.setInt('user_id', userId);
+  await prefs.setString('userName', userName);
+
+  if (!mounted) return;
+
+  Navigator.pushAndRemoveUntil(
+    context,
+    MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)),
+    (route) => false,
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
