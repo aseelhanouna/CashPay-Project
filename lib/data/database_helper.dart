@@ -57,6 +57,7 @@ class DatabaseHelper {
         pin TEXT,
         salt TEXT,
         balance REAL DEFAULT 100.0
+        sync_status TEXT DEFAULT 'pending'
       )
     ''');
 
@@ -100,15 +101,15 @@ class DatabaseHelper {
   // 1. التأكد من أن رقم الهوية فريد محلياً
   final List<Map<String, dynamic>> res = await dbClient.query(
     'users',
-    where: 'id = ?',
-    whereArgs: [user['id']],
+    where: 'id_number = ?',
+    whereArgs: [user['id_number']],
   );
 
   if (res.isNotEmpty) {
     throw Exception("رقم الهوية هذا مستخدم مسبقاً");
   }
 
-  // 2. إدخال البيانات (تأكد أن كلمة المرور مشفرة بـ Salt ثابت وهو رقم الهوية)
+  // 2. إدخال البيانات
   return await dbClient.insert(
     'users',
     user,
