@@ -419,6 +419,7 @@ class DatabaseHelper {
       '''
       UPDATE users 
       SET balance = balance + ? 
+         sync_status = 'pending' 
       WHERE id = ?
     ''',
       [amount, userId],
