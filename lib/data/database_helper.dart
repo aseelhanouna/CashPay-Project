@@ -93,14 +93,28 @@ class DatabaseHelper {
   // ======================
 
   
-  Future<int> createUser(Map<String, dynamic> user) async {
-    final dbClient = await database;
-    return await dbClient.insert(
-      'users',
-      user,
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+  
+    Future<int> createUser(Map<String, dynamic> user) async {
+  final dbClient = await database;
+  
+  // 1. التأكد من أن رقم الهوية فريد محلياً
+  final List<Map<String, dynamic>> res = await dbClient.query(
+    'users',
+    where: 'id = ?',
+    whereArgs: [user['id']],
+  );
+
+  if (res.isNotEmpty) {
+    throw Exception("رقم الهوية هذا مستخدم مسبقاً");
   }
+
+  // 2. إدخال البيانات (تأكد أن كلمة المرور مشفرة بـ Salt ثابت وهو رقم الهوية)
+  return await dbClient.insert(
+    'users',
+    user,
+    conflictAlgorithm: ConflictAlgorithm.abort, 
+  );
+}
 
   Future<Map<String, dynamic>?> login(String idNumber, String password) async {
     final db = await database;
