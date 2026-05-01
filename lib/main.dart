@@ -59,7 +59,8 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     _checkAuth();
-    SessionManager.updateLastOnline();
+    // تأكدي أن هذه الدالة موجودة في SessionManager
+    SessionManager.updateLastOnline(); 
   }
 
   Future<void> _checkAuth() async {
@@ -68,7 +69,7 @@ class _SplashScreenState extends State<SplashScreen> {
 
     bool isBlocked = prefs.getBool('is_blocked') ?? false;
     if (isBlocked && mounted) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const BlockedPage()));
+      // تأكدي من وجود BlockedPage في مشروعك أو استبدالها بصفحة أخرى
       return; 
     }
 
@@ -175,6 +176,142 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             children: [
               const SizedBox(height: 40),
-              _buildField(c: _idController, label: "رقم الهوية", icon: Icons.badge, enabled: !_isLoading, type: TextInputType.number, validator: (v) => (v != null && v.length >= 9) ? null : "رقم غير صحيح"),
+              _buildField(c: _idController, label: "رقم الهوية", icon: Icons.badge),
               const SizedBox(height: 20),
-              _buildField(c: _passController, label: "كلمة المرور", icon: Icons.lock, isPass: true, hide: _hidePass, enabled: !_isLoading, onToggle: () => setState(() => _hidePass = !_hidePass)),
+              _buildField(c: _passController, label: "كلمة المرور", icon: Icons.lock, isPass: true),
+              const SizedBox(height: 30),
+              _isLoading 
+                ? const CircularProgressIndicator() 
+                : ElevatedButton(
+                    onPressed: _handleLogin,
+                    child: const Text("دخول"),
+                  ),
+              TextButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterPage())),
+                child: const Text("لا تملك حساباً؟ سجل الآن"),
+              )
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildField({required TextEditingController c, required String label, required IconData icon, bool isPass = false}) {
+    return TextFormField(
+      controller: c,
+      obscureText: isPass && _hidePass,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        suffixIcon: isPass ? IconButton(onPressed: () => setState(() => _hidePass = !_hidePass), icon: Icon(_hidePass ? Icons.visibility_off : Icons.visibility)) : null,
+      ),
+      validator: (v) => v!.isEmpty ? "مطلوب" : null,
+    );
+  }
+}
+
+// ---------------- RegisterPage ----------------
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _idController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _passController = TextEditingController();
+  final _dateController = TextEditingController();
+  bool _isLoading = false;
+
+  void _showSnackBar(String msg, Color color) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+  }
+
+  Future<void> _handleRegister() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_dateController.text.isEmpty) {
+      _showSnackBar("يرجى اختيار تاريخ الميلاد", Colors.orange);
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    String nationalId = _idController.text.trim();
+    String password = _passController.text;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(nationalId).get();
+      if (userDoc.exists) throw Exception("رقم الهوية مسجل مسبقاً");
+
+      String hashedPassword = sha256.convert(utf8.encode(password + nationalId)).toString();
+
+      await FirebaseFirestore.instance.collection('users').doc(nationalId).set({
+        'id_number': nationalId,
+        'name': _nameController.text,
+        'password': hashedPassword,
+        'birthDate': _dateController.text,
+        'balance': 100.0,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+
+      await DatabaseHelper.instance.createUser({
+        'id_number': nationalId,
+        'name': _nameController.text,
+        'password': hashedPassword,
+        'birthDate': _dateController.text,
+        'salt': nationalId,
+        'balance': 100.0,
+      });
+
+      _showSnackBar("تم التسجيل بنجاح", Colors.green);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      _showSnackBar(e.toString().replaceFirst("Exception: ", ""), Colors.red);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("إنشاء حساب")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(25),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _buildField(c: _idController, label: "رقم الهوية", icon: Icons.badge),
+              _buildField(c: _nameController, label: "الاسم كامل", icon: Icons.person),
+              _buildField(c: _passController, label: "كلمة المرور", icon: Icons.lock, isPass: true),
+              _buildField(c: _dateController, label: "تاريخ الميلاد", icon: Icons.calendar_today, readOnly: true, onTap: () async {
+                DateTime? picked = await showDatePicker(context: context, initialDate: DateTime(2000), firstDate: DateTime(1950), lastDate: DateTime.now());
+                if (picked != null) setState(() => _dateController.text = DateFormat('yyyy-MM-dd').format(picked));
+              }),
+              const SizedBox(height: 30),
+              _isLoading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _handleRegister, child: const Text("تسجيل")),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildField({required TextEditingController c, required String label, required IconData icon, bool isPass = false, bool readOnly = false, VoidCallback? onTap}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: TextFormField(
+        controller: c,
+        obscureText: isPass,
+        readOnly: readOnly,
+        onTap: onTap,
+        decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+        validator: (v) => v!.isEmpty ? "مطلوب" : null,
+      ),
+    );
+  }
+}
