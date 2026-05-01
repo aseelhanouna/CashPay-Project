@@ -300,13 +300,55 @@ class _RegisterPageState extends State<RegisterPage> {
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
-    // 4. التحقق من تاريخ الميلاد
+ // التحقق من تاريخ الميلاد
     if (_date.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("يرجى اختيار تاريخ الميلاد")),
       );
       return;
+    
+
+  String nationalId = _idController.text.trim();
+  String password = _passwordController.text;
+
+  try {
+    // 1. التحقق من Firebase Firestore أولاً (لمنع التكرار العالمي)
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(nationalId)
+        .get();
+
+    if (userDoc.exists) {
+      throw Exception("رقم الهوية هذا مسجل مسبقاً في النظام السحابي");
     }
+
+    // 2. التشفير باستخدام Salt ثابت (رقم الهوية) لضمان صحة الدخول مستقبلاً
+    String hashedPassword = sha256.convert(utf8.encode(password + nationalId)).toString();
+
+    // 3. الرفع إلى Firebase (المصدر الموثوق الدائم)
+    await FirebaseFirestore.instance.collection('users').doc(nationalId).set({
+      'id_number': nationalId,
+      'name': _nameController.text,
+      'password': hashedPassword,
+      'balance': 100.0, // الرصيد الابتدائي
+      'created_at': FieldValue.serverTimestamp(),
+    });
+
+    // 4. الحفظ في SQLite المحلي (لدعم العمل أوفلاين)
+    await DatabaseHelper.instance.createUser({
+      'id_number': nationalId,
+      'name': _nameController.text,
+      'password': hashedPassword,
+      'salt': nationalId, // حفظ الملح لعملية الدخول أوفلاين
+      'balance': 100.0,
+    });
+
+    _showSuccess("تم إنشاء الحساب بنجاح");
+  } catch (e) {
+    _showError(e.toString());
+  }
+
+   }
 
     setState(() => _isLoading = true);
     try {
