@@ -128,6 +128,12 @@ class _LoginPageState extends State<LoginPage> {
     _passController.dispose();
     super.dispose();
   }
+  void _showSnackBar(String msg, Color color) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(msg), backgroundColor: color)
+  );
+}
+
 
   Future<void> _handleLogin() async {
   // 1. التحقق من الحقول أولاً
