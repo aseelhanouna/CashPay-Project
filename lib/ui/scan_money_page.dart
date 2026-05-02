@@ -37,86 +37,95 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   // =========================
   //  ON SCAN
   // =========================
-  void _onDetect(BarcodeCapture capture) async {
-    if (capture.barcodes.isEmpty || isProcessing) return;
+   void _onDetect(BarcodeCapture capture) async {
+  if (capture.barcodes.isEmpty || isProcessing) return;
 
-    final raw = capture.barcodes.first.rawValue;
-    if (raw == null) {
-      _handleError("QR غير صالح");
-      return;
-    }
-
-    setState(() => isProcessing = true);
-
-    try {
-      // 1. فحص الحظر
-      if (await SessionManager.isBlocked()) {
-        int seconds = ((await SessionManager.getRemainingTime()) / 1000).round();
-        throw Exception("🚨 التطبيق محظور ($seconds ثانية متبقية)");
-      }
-
-      // 2. تحليل البيانات
-      final data = jsonDecode(raw);
-      final String txId = data['tx_id']?.toString() ?? '';
-      final int senderId = (num.tryParse(data['sender_id']?.toString() ?? '') ?? 0).toInt();
-      final int receiverId = (num.tryParse(data['receiver_id']?.toString() ?? '') ?? 0).toInt();
-      final double amount = (num.tryParse(data['amount']?.toString() ?? '') ?? 0.0).toDouble();
-final String formattedAmount = amount.toStringAsFixed(2);
-      final int timestamp = (num.tryParse(data['timestamp']?.toString() ?? '') ?? 0).toInt();
-      final String signature = data['signature']?.toString() ?? '';
-
-      // 3. التحققات المنطقية
-      if (txId.isEmpty || senderId <= 0 || amount <= 0 || signature.isEmpty) {
-        throw Exception("بيانات الرمز غير مكتملة");
-      }
-      if (amount > 50) throw Exception("مبلغ غير مسموح");
-      
-
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - timestamp > 5 * 60 * 1000) throw Exception("QR منتهي الصلاحية");
-
-      final exists = await DatabaseHelper.instance.isTransactionExists(txId);
-      if (exists) throw Exception("تم استخدام هذا الرمز مسبقاً");
-
-      // 4. التحقق من التوقيع
-      final rawData = "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
-      final expected = generateSignature(rawData, senderId);
-      if (expected != signature) throw Exception("تحذير: الرمز غير موثوق (تلاعب بالبيانات)");
-
-      // 5. تأكيد المستخدم
-      await _controller.stop();
-      final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
-
-      if (!confirmed) {
-        await _controller.start();
-        setState(() => isProcessing = false);
-        return;
-      }
-
-      // 6. التنفيذ النهائي
-      await DatabaseHelper.instance.receiveTokens(
-        txId: txId,
-        senderId: senderId,
-        receiverId: receiverId,
-        amount: amount,
-        signature: signature,
-        timestamp: timestamp,
-      );
-
-      SyncService.syncTransactions(widget.receiverId);
-      _showSuccess(amount);
-
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) Navigator.pop(context);
-      });
-
-    } catch (e) {
-      _handleError(e.toString().replaceFirst("Exception: ", ""));
-      await _controller.start();
-    } finally {
-      if (mounted) setState(() => isProcessing = false);
-    }
+  final raw = capture.barcodes.first.rawValue;
+  if (raw == null) {
+    _handleError("QR غير صالح");
+    return;
   }
+
+  setState(() => isProcessing = true);
+
+  try {
+    // 1. فحص الحظر
+    if (await SessionManager.isBlocked()) {
+      int seconds = ((await SessionManager.getRemainingTime()) / 1000).round();
+      throw Exception("🚨 التطبيق محظور ($seconds ثانية متبقية)");
+    }
+
+    // 2. تحليل البيانات
+    final data = jsonDecode(raw);
+    final String txId = data['tx_id']?.toString() ?? '';
+    final int senderId = (num.tryParse(data['sender_id']?.toString() ?? '') ?? 0).toInt();
+    final int receiverId = (num.tryParse(data['receiver_id']?.toString() ?? '') ?? 0).toInt();
+    final double amount = (num.tryParse(data['amount']?.toString() ?? '') ?? 0.0).toDouble();
+    final String formattedAmount = amount.toStringAsFixed(2); // ✅ ممتاز
+    final int timestamp = (num.tryParse(data['timestamp']?.toString() ?? '') ?? 0).toInt();
+    final String signature = data['signature']?.toString() ?? '';
+
+    // 3. التحققات المنطقية
+    if (txId.isEmpty || senderId <= 0 || amount <= 0 || signature.isEmpty) {
+      throw Exception("بيانات الرمز غير مكتملة");
+    }
+    
+    // تأكدي من رفع هذا الحد إذا كنتِ تجربين مبالغ أكبر
+    if (amount > 1000) throw Exception("مبلغ غير مسموح"); 
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - timestamp > 5 * 60 * 1000) throw Exception("QR منتهي الصلاحية");
+
+    final exists = await DatabaseHelper.instance.isTransactionExists(txId);
+    if (exists) throw Exception("تم استخدام هذا الرمز مسبقاً");
+
+    // 4. التحقق من التوقيع (التعديل الجوهري)
+    final rawData = "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
+    
+    // نستخدم CryptoHelper لضمان تطابق السكرت كي (Secret Key)
+    final expected = CryptoHelper.sign(rawData, senderId);
+    
+    if (expected != signature) {
+      print("Expected: $expected"); // للديبيج
+      print("Found: $signature");
+      throw Exception("تحذير: الرمز غير موثوق (تلاعب بالبيانات)");
+    }
+
+    // 5. تأكيد المستخدم
+    await _controller.stop();
+    final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
+
+    if (!confirmed) {
+      await _controller.start();
+      return; // الـ finally سيتكفل بالـ isProcessing = false
+    }
+
+    // 6. التنفيذ النهائي
+    await DatabaseHelper.instance.receiveTokens(
+      txId: txId,
+      senderId: senderId,
+      receiverId: widget.receiverId, // استخدمي المعرف المرر للصفحة
+      amount: amount,
+      signature: signature,
+      timestamp: timestamp,
+    );
+
+    SyncService.syncTransactions(widget.receiverId);
+    _showSuccess(amount);
+
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) Navigator.pop(context);
+    });
+
+  } catch (e) {
+    _handleError(e.toString().replaceFirst("Exception: ", ""));
+    await _controller.start();
+  } finally {
+    
+    if (mounted) setState(() => isProcessing = false);
+  }
+}
+
 
   // =========================
   // 🔐 CONFIRM DIALOG
