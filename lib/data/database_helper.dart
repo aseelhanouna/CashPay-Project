@@ -56,7 +56,7 @@ class DatabaseHelper {
         birthDate TEXT,
         pin TEXT,
         salt TEXT,
-        balance REAL DEFAULT 100.0
+        balance REAL DEFAULT 100.0,
         sync_status TEXT DEFAULT 'pending'
       )
     ''');
