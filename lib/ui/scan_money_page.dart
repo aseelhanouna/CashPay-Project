@@ -57,6 +57,25 @@ String simpleSign(String data, int userId) {
 
   setState(() => isProcessing = true);
   await _controller.stop();
+  try {
+    final raw = capture.barcodes.first.rawValue;
+    if (raw == null) throw "QR فارغ";
+
+    
+    print("Data received: $raw");
+
+    final data = jsonDecode(raw);
+    
+
+  } catch (e) {
+    print("Error caught: $e");
+    _handleError(e.toString());
+  } finally {
+    // هذا السطر يجب أن يُنفذ مهما حدث
+    if (mounted) {
+      setState(() => isProcessing = false);
+    }
+  }
 
   try {
     // 1. فحص الحظر
