@@ -4,10 +4,11 @@ import 'package:crypto/crypto.dart';
 class CryptoHelper {
 
   // =========================
-  //  SIGN DATA (HMAC SHA256)
+  // SIGN DATA (HMAC SHA256)
   // =========================
   static String sign(String data, int userId) {
-    const secret = "CP_CORE_GLOBAL_SECRET_2026";
+     
+    final secret = "CP_CORE_${userId}_X7!2026";
 
     final key = utf8.encode(secret);
     final bytes = utf8.encode(data);
@@ -17,14 +18,15 @@ class CryptoHelper {
   }
 
   // =========================
-  // 🔍 VERIFY SIGNATURE
+  //  VERIFY SIGNATURE
   // =========================
-  static bool verify(String data, String signature) {
-    return sign(data) == signature;
+ 
+  static bool verify(String data, String signature, int userId) {
+    return sign(data, userId) == signature;
   }
 
   // =========================
-  // 📦 BUILD RAW DATA
+  // BUILD RAW DATA
   // =========================
   static String buildRawData({
     required String txId,
@@ -33,6 +35,8 @@ class CryptoHelper {
     required double amount,
     required int timestamp,
   }) {
-    return "$txId|$senderId|$receiverId|$amount|$timestamp";
+   
+    final formattedAmount = amount.toStringAsFixed(2);
+    return "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
   }
 }
