@@ -39,6 +39,13 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   // =========================
   //  ON SCAN
   // =========================
+String simpleSign(String data, int userId) {
+  final secret = "CP_CORE_${userId}_X7!2026";
+  final key = utf8.encode(secret);
+  final hmac = Hmac(sha256, key);
+  return hmac.convert(utf8.encode(data)).toString();
+}
+ 
    void _onDetect(BarcodeCapture capture) async {
   if (capture.barcodes.isEmpty || isProcessing) return;
 
@@ -49,6 +56,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   }
 
   setState(() => isProcessing = true);
+  await _controller.stop();
 
   try {
     // 1. فحص الحظر
