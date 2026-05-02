@@ -4,9 +4,9 @@ import 'package:crypto/crypto.dart';
 class CryptoHelper {
 
   // =========================
-  // 🔐 SIGN DATA (HMAC SHA256)
+  //  SIGN DATA (HMAC SHA256)
   // =========================
-  static String sign(String data) {
+  static String sign(String data, int userId) {
     const secret = "CP_CORE_GLOBAL_SECRET_2026";
 
     final key = utf8.encode(secret);
