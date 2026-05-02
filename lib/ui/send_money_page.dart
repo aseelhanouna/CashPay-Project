@@ -26,7 +26,7 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
   }
 
   // =========================
-  // 📦 DIALOG
+  // DIALOG
   // =========================
   void _showErrorDialog(String message) {
     showDialog(
@@ -45,7 +45,7 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
   }
 
   // =========================
-  // 📦 GENERATE QR
+  //  GENERATE QR
   // =========================
   Future<void> _generateQR() async {
     try {
@@ -58,6 +58,8 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
       if (amount == null || amount <= 0) {
         throw Exception("الرجاء إدخال مبلغ صحيح.");
       }
+final String formattedAmount = amount.toStringAsFixed(2);
+
 
       final String txId = "TX${DateTime.now().millisecondsSinceEpoch}"; 
     final int senderId = widget.userId;
@@ -65,8 +67,9 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
     final int timestamp = DateTime.now().millisecondsSinceEpoch;
 
     
-    final String rawData = "$txId|$senderId|$receiverId|$amount|$timestamp";
-    final String signature = CryptoHelper.sign(rawData);
+    final String rawData = "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
+
+    final String signature = CryptoHelper.sign(rawData, senderId);
 
    
     final qrPayload = {
