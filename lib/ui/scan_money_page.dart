@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import '../sync/sync_service.dart';
 import '../data/database_helper.dart';
 import '../core/session_manager.dart';
+import '../security/crypto_helper.dart';
+
 
 class ScanMoneyPage extends StatefulWidget {
   final int receiverId;
