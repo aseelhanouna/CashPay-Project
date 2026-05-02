@@ -24,7 +24,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   bool isProcessing = false;
 
   // =========================
-  // 🔐 SIGNATURE
+  // SIGNATURE
   // =========================
   String generateSignature(String data, int userId) {
     final secretKey = "CP_CORE_${userId}_X7!2026";
@@ -35,7 +35,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   }
 
   // =========================
-  // 📷 ON SCAN
+  //  ON SCAN
   // =========================
   void _onDetect(BarcodeCapture capture) async {
     if (capture.barcodes.isEmpty || isProcessing) return;
@@ -61,6 +61,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       final int senderId = (num.tryParse(data['sender_id']?.toString() ?? '') ?? 0).toInt();
       final int receiverId = (num.tryParse(data['receiver_id']?.toString() ?? '') ?? 0).toInt();
       final double amount = (num.tryParse(data['amount']?.toString() ?? '') ?? 0.0).toDouble();
+final String formattedAmount = amount.toStringAsFixed(2);
       final int timestamp = (num.tryParse(data['timestamp']?.toString() ?? '') ?? 0).toInt();
       final String signature = data['signature']?.toString() ?? '';
 
@@ -78,7 +79,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       if (exists) throw Exception("تم استخدام هذا الرمز مسبقاً");
 
       // 4. التحقق من التوقيع
-      final rawData = "$txId|$senderId|$receiverId|$amount|$timestamp";
+      final rawData = "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
       final expected = generateSignature(rawData, senderId);
       if (expected != signature) throw Exception("تحذير: الرمز غير موثوق (تلاعب بالبيانات)");
 
