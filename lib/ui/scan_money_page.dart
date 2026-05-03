@@ -155,48 +155,59 @@ void _onDetect(BarcodeCapture capture) async {
 
   // =========================
   // UI & BUILD
-  // =========================
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
-          Center(
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 2),
-                borderRadius: BorderRadius.circular(12),
-              ),
+  // =======================
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: Colors.black,
+    body: Stack(
+      children: [
+        //  الكاميرا تملأ الشاشة كاملة
+        Positioned.fill(
+          child: MobileScanner(
+            controller: _controller,
+            onDetect: _onDetect,
+            errorBuilder: (context, error, child) {
+              return Center(
+                child: Text(
+                  'خطأ في الكاميرا: ${error.errorCode}',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              );
+            },
+          ),
+        ),
+
+        //  إطار المسح
+        Center(
+          child: Container(
+            width: 250,
+            height: 250,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white, width: 2),
+              borderRadius: BorderRadius.circular(12),
             ),
           ),
-          if (isProcessing)
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-        ],
-      ),
-    );
-  }
+        ),
 
-  void _handleError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  void _showSuccess(double amount) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("تم استلام $amount بنجاح"), backgroundColor: Colors.green),
-    );
-  }
+        //  مؤشر التحميل فقط عند المعالجة
+        if (isProcessing)
+          Container(
+            color: Colors.black54,
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          ),
+      ],
+    ),
+  );
+}
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-_controller.start();
+
   }
 
   @override
