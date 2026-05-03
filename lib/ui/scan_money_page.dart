@@ -196,6 +196,7 @@ void _onDetect(BarcodeCapture capture) async {
   void initState() {
     super.initState();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+_controller.start();
   }
 
   @override
