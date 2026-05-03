@@ -45,8 +45,12 @@ String simpleSign(String data, int userId) {
   final hmac = Hmac(sha256, key);
   return hmac.convert(utf8.encode(data)).toString();
 }
- 
-   void _onDetect(BarcodeCapture capture) async {
+
+ //===========
+//onDetect
+//============
+
+void _onDetect(BarcodeCapture capture) async {
   if (capture.barcodes.isEmpty || isProcessing) return;
 
   final raw = capture.barcodes.first.rawValue;
@@ -57,25 +61,6 @@ String simpleSign(String data, int userId) {
 
   setState(() => isProcessing = true);
   await _controller.stop();
-  try {
-    final raw = capture.barcodes.first.rawValue;
-    if (raw == null) throw "QR فارغ";
-
-    
-    print("Data received: $raw");
-
-    final data = jsonDecode(raw);
-    
-
-  } catch (e) {
-    print("Error caught: $e");
-    _handleError(e.toString());
-  } finally {
-    // هذا السطر يجب أن يُنفذ مهما حدث
-    if (mounted) {
-      setState(() => isProcessing = false);
-    }
-  }
 
   try {
     // 1. فحص الحظر
@@ -90,7 +75,7 @@ String simpleSign(String data, int userId) {
     final int senderId = (num.tryParse(data['sender_id']?.toString() ?? '') ?? 0).toInt();
     final int receiverId = (num.tryParse(data['receiver_id']?.toString() ?? '') ?? 0).toInt();
     final double amount = (num.tryParse(data['amount']?.toString() ?? '') ?? 0.0).toDouble();
-    final String formattedAmount = amount.toStringAsFixed(2); // ✅ ممتاز
+    final String formattedAmount = amount.toStringAsFixed(2);
     final int timestamp = (num.tryParse(data['timestamp']?.toString() ?? '') ?? 0).toInt();
     final String signature = data['signature']?.toString() ?? '';
 
@@ -98,9 +83,8 @@ String simpleSign(String data, int userId) {
     if (txId.isEmpty || senderId <= 0 || amount <= 0 || signature.isEmpty) {
       throw Exception("بيانات الرمز غير مكتملة");
     }
-    
-    // تأكدي من رفع هذا الحد إذا كنتِ تجربين مبالغ أكبر
-    if (amount > 1000) throw Exception("مبلغ غير مسموح"); 
+
+    if (amount > 1000) throw Exception("مبلغ غير مسموح");
 
     final now = DateTime.now().millisecondsSinceEpoch;
     if (now - timestamp > 5 * 60 * 1000) throw Exception("QR منتهي الصلاحية");
@@ -108,32 +92,29 @@ String simpleSign(String data, int userId) {
     final exists = await DatabaseHelper.instance.isTransactionExists(txId);
     if (exists) throw Exception("تم استخدام هذا الرمز مسبقاً");
 
-    // 4. التحقق من التوقيع (التعديل الجوهري)
+    // 4. التحقق من التوقيع
     final rawData = "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
-    
-    // نستخدم CryptoHelper لضمان تطابق السكرت كي (Secret Key)
     final expected = CryptoHelper.sign(rawData, senderId);
-    
+
     if (expected != signature) {
-      print("Expected: $expected"); // للديبيج
+      print("Expected: $expected");
       print("Found: $signature");
       throw Exception("تحذير: الرمز غير موثوق (تلاعب بالبيانات)");
     }
 
     // 5. تأكيد المستخدم
-    await _controller.stop();
     final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
 
     if (!confirmed) {
       await _controller.start();
-      return; // الـ finally سيتكفل بالـ isProcessing = false
+      return;
     }
 
     // 6. التنفيذ النهائي
     await DatabaseHelper.instance.receiveTokens(
       txId: txId,
       senderId: senderId,
-      receiverId: widget.receiverId, // استخدمي المعرف المرر للصفحة
+      receiverId: widget.receiverId,
       amount: amount,
       signature: signature,
       timestamp: timestamp,
@@ -148,13 +129,11 @@ String simpleSign(String data, int userId) {
 
   } catch (e) {
     _handleError(e.toString().replaceFirst("Exception: ", ""));
-    await _controller.start();
+    await _controller.start(); //  تشغيل الكاميرا مجدداً عند الخطأ
   } finally {
-    
     if (mounted) setState(() => isProcessing = false);
   }
 }
-
 
   // =========================
   // 🔐 CONFIRM DIALOG
