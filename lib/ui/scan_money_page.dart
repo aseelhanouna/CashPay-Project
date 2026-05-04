@@ -41,7 +41,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     try {
       print("🔍 بدأ الفحص");
 
-      // 🔴 نوقف الكاميرا بأمان
+      //  نوقف الكاميرا بأمان
       if (_controller.value.isRunning) {
         await _controller.stop();
       }
@@ -58,7 +58,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     } catch (e) {
       _handleError(e.toString().replaceFirst("Exception: ", ""));
     } finally {
-      // ✅ أهم إصلاح: دائماً فك التعليق + رجع الكاميرا
+      
       if (mounted) {
         setState(() => isProcessing = false);
         await _controller.start();
@@ -115,8 +115,10 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     }
 
     // 3. التوقيع
+     final amountStr = data['amount'].toString();
+
     final rawData =
-        "$txId|$senderId|${amount.toStringAsFixed(2)}|$timestamp";
+        "$txId|$senderId|$amountStr|$timestamp";
 
     final expected = CryptoHelper.sign(rawData, senderId);
 
