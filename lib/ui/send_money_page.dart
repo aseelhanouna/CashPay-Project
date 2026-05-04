@@ -66,7 +66,7 @@ final String formattedAmount = amount.toStringAsFixed(2);
     final int timestamp = DateTime.now().millisecondsSinceEpoch;
 
     
-    final String rawData = "$txId|$senderId| $formattedAmount|$timestamp";
+    final String rawData = "$txId|$senderId|$formattedAmount|$timestamp";
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
