@@ -63,11 +63,10 @@ final String formattedAmount = amount.toStringAsFixed(2);
 
       final String txId = "TX${DateTime.now().millisecondsSinceEpoch}"; 
     final int senderId = widget.userId;
-    final int receiverId = 0; 
     final int timestamp = DateTime.now().millisecondsSinceEpoch;
 
     
-    final String rawData = "$txId|$senderId|$receiverId|$formattedAmount|$timestamp";
+    final String rawData = "$txId|$senderId|. $formattedAmount|$timestamp";
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
@@ -75,7 +74,6 @@ final String formattedAmount = amount.toStringAsFixed(2);
     final qrPayload = {
       'tx_id': txId,
       'sender_id': senderId,
-      'receiver_id': receiverId,
       'amount': amount,
       'timestamp': timestamp,
       'signature': signature,
