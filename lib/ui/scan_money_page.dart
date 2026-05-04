@@ -99,7 +99,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       throw Exception("بيانات ناقصة");
     }
 
-    if (amount > 1000) {
+    if (amount > 50) {
       throw Exception("المبلغ كبير");
     }
 
@@ -116,7 +116,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
 
     // 3. التوقيع
     final rawData =
-        "$txId|$senderId|$receiverId|${amount.toStringAsFixed(2)}|$timestamp";
+        "$txId|$senderId|${amount.toStringAsFixed(2)}|$timestamp";
 
     final expected = CryptoHelper.sign(rawData, senderId);
 
