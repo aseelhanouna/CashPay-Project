@@ -147,12 +147,11 @@ class DatabaseHelper {
   String generateSignature({
     required String txId,
     required int senderId,
-    required int receiverId,
     required double amount,
     required int timestamp,
   }) {
     final secret = "USER_${senderId}_SECRET_KEY";
-    final data = "$txId|$senderId|$receiverId|$amount|$timestamp|$secret";
+    final data = "$txId|$senderId|$amount|$timestamp|$secret";
     return sha256.convert(utf8.encode(data)).toString();
   }
 
@@ -166,7 +165,6 @@ class DatabaseHelper {
     final expected = generateSignature(
       txId: txId,
       senderId: senderId,
-      receiverId: receiverId,
       amount: amount,
       timestamp: timestamp,
     );
