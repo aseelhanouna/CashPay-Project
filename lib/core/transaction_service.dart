@@ -1,22 +1,22 @@
+import 'dart:convert';
 import '../data/database_helper.dart';
 import '../core/session_manager.dart';
-import 'dart:convert';
+import '../security/crypto_helper.dart';
 
 class TransactionService {
 
-  // 🔐 إرسال أموال (توليد البيانات الموقعة)
+  // 🔐 إرسال أموال (توليد البيانات الموقعة لرمز QR)
   static Future<String> generateTransferToken({
     required int senderId,
-    required int receiverId,
     required double amount,
   }) async {
-    
+
     // 1) فحص حالة الحظر
     if (await SessionManager.isBlocked()) {
-      throw Exception("🚨 التطبيق مقفل - اتصل بالإنترنت");
+      throw Exception("🚨 التطبيق مقفل مؤقتاً");
     }
 
-    // 2) فحص عدد العمليات المتكررة
+    // 2) فحص عدد العمليات المتكررة (منع الاحتيال)
     await checkFraudLimit(senderId);
 
     final db = DatabaseHelper.instance;
@@ -27,49 +27,46 @@ class TransactionService {
       throw Exception("❌ الرصيد غير كافي");
     }
 
-    // ⭐ الإضافة الجديدة: خصم المبلغ من الرصيد فوراً عند توليد التوكن
-    // هذا يحول الرصيد النقدي إلى "توكن" معلق داخل الـ QR
+    // 4) إنشاء بيانات العملية وتوحيد التنسيق
+    final String txId = "TX_${senderId}_${DateTime.now().millisecondsSinceEpoch}";
+    final int timestamp = DateTime.now().millisecondsSinceEpoch;
+    final String amountStr = amount.toStringAsFixed(2); // توحيد الكسور
+
+    // استخدام CryptoHelper الموحد لضمان مطابقة الـ Scan
+    final String rawData = "$txId|$senderId|$amountStr|$timestamp";
+    final String signature = CryptoHelper.sign(rawData, senderId);
+
+    // ⭐ خصم المبلغ من الرصيد فوراً (لأن الـ QR أصبح يمثل المال)
     await db.updateUserBalance(senderId, -amount);
 
-    // 4) إنشاء بيانات التوكن
-    String txId = "TX_${senderId}_${DateTime.now().millisecondsSinceEpoch}";
-    int timestamp = DateTime.now().millisecondsSinceEpoch;
-
-    String signature = db.generateSignature(
-      txId: txId,
-      senderId: senderId,
-      receiverId: receiverId,
-      amount: amount,
-      timestamp: timestamp,
-    );
-
-    // 5) تحويل البيانات لـ JSON
+    // 5) تحويل البيانات لـ JSON (بالمفاتيح التي يتوقعها ScanMoneyPage)
     return jsonEncode({
       "tx_id": txId,
-      "sender": senderId,
-      "receiver": receiverId,
-      "amount": amount,
-      "time": timestamp,
-      "sig": signature
+      "sender_id": senderId,
+      "amount": amountStr,
+      "timestamp": timestamp,
+      "signature": signature
     });
-
   }
 
-  // 📥 استقبال أموال
-  
+  // 📥 استقبال أموال (يتم استدعاؤها من الـ Scanner)
+  static Future<void> processReceivedToken(Map<String, dynamic> tokenData, int currentUserId) async {
     final db = DatabaseHelper.instance;
 
     try {
+      // التأكد أن المستلم هو المستخدم الحالي (اختياري حسب منطق مشروعك)
+      // إذا كان الـ QR مخصص لشخص معين، نفحص tokenData['receiver_id']
+
       await db.receiveTokens(
         txId: tokenData['tx_id'],
-        senderId: tokenData['sender'],
-        receiverId: tokenData['receiver'],
-        amount: tokenData['amount'],
-        signature: tokenData['sig'],
-        timestamp: tokenData['time'],
+        senderId: int.parse(tokenData['sender_id'].toString()),
+        receiverId: currentUserId,
+        amount: double.parse(tokenData['amount'].toString()),
+        signature: tokenData['signature'],
+        timestamp: int.parse(tokenData['timestamp'].toString()),
       );
     } catch (e) {
-      if (e.toString().contains("توقيع رقمي غير صالح")) {
+      if (e.toString().contains("التلاعب") || e.toString().contains("غير صالح")) {
         await SessionManager.applyFraudBlock();
       }
       rethrow;
@@ -79,56 +76,11 @@ class TransactionService {
   // 🛡️ دالة فحص حدود الاحتيال
   static Future<void> checkFraudLimit(int userId) async {
     final count = await DatabaseHelper.instance.countRecentTransactions(userId);
-    
+
     if (count >= 5) {
       await DatabaseHelper.instance.logFraud("MULTI_TX", "نشاط مكثف في وقت قصير");
       await SessionManager.applyFraudBlock();
-      throw Exception("🚨 تم حظرك مؤقتاً بسبب نشاط مشبوه");
-    }
-  } 
-
-  // 🔍 دالة التحقق من حالة الجلسة
-  static Future<void> verifySessionStatus() async {
-    if (await SessionManager.isBlocked()) {
-      throw Exception("التطبيق مقفل - وضع قراءة فقط");
+      throw Exception("🚨 تم حظرك مؤقتاً بسبب نشاط مشبوه (أكثر من 5 عمليات)");
     }
   }
-  Future<void> receiveTokens({
-  required String txId,
-  required int senderId,
-  required int receiverId,
-  required double amount,
-  required String signature,
-  required int timestamp,
-}) async {
-  final db = await DatabaseHelper.instance.database;
-
-  // استخدام Transaction لضمان تنفيذ كل شيء أو لا شيء
-  await db.transaction((txn) async {
-    
-    // 1. التأكد من أن هذه العملية (txId) لم يتم استقبالها من قبل (منع التكرار)
-    final alreadyReceived = await txn.query('transactions', where: 'tx_id = ?', whereArgs: [txId]);
-    if (alreadyReceived.isNotEmpty) {
-      throw Exception("هذه العملية تم استلامها مسبقاً");
-    }
-
-    // 2. التحقق من التوقيع الرقمي (Signature Validation)
-    // (هنا تضع منطق التحقق الخاص بك)
-
-    // 3. ⭐ إضافة المبلغ لرصيد المستلم
-    await txn.rawUpdate(
-      'UPDATE users SET balance = balance + ? WHERE id = ?',
-      [amount, receiverId],
-    );
-
-    // 4. تسجيل العملية في جدول العمليات للتوثيق
-    await txn.insert('transactions', {
-      'tx_id': txId,
-      'sender_id': senderId,
-      'receiver_id': receiverId,
-      'amount': amount,
-      'timestamp': timestamp,
-    });
-  });
 }
-} 
