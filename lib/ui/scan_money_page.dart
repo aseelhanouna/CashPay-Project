@@ -116,7 +116,6 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     }
 
     // 3. التوقيع
-     final amountStr = amount.toStringAsFixed(2);
 
     final rawData =
         "$txId|$senderId|$amountStr|$timestamp";
