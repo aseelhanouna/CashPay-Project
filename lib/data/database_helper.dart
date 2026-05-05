@@ -208,7 +208,7 @@ final now = DateTime.now().millisecondsSinceEpoch;
     throw Exception("⛔ انتهت صلاحية QR");  
   }  
 
-  final valid = verifySignature(  
+  final valid = CryptoHelper.verifySignature(  
     txId: txId,  
     senderId: senderId,  
     amount: amount,  
