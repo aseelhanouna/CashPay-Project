@@ -159,7 +159,6 @@ class DatabaseHelper {
   bool verifySignature({
     required String txId,
     required int senderId,
-    required int receiverId,
     required double amount,
     required int timestamp,
     required String signature,
