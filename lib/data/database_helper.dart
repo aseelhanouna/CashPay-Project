@@ -207,14 +207,20 @@ final now = DateTime.now().millisecondsSinceEpoch;
   if (now - timestamp > 5 * 60 * 1000) {  
     throw Exception("⛔ انتهت صلاحية QR");  
   }  
+final data = CryptoHelper.buildRawData(
+  txId: txId,
+  senderId: senderId,
+  amountStr: amount.toString(),
+  timestamp: timestamp,
+);
 
-  final valid = CryptoHelper.verifySignature(  
-    txId: txId,  
-    senderId: senderId,  
-    amount: amount,  
-    timestamp: timestamp,  
-    signature: signature,  
-  );  
+final valid = CryptoHelper.verify(
+  data,
+  signature,
+  senderId,
+);
+
+ 
 
   if (!valid) {  
     throw Exception("❌ QR غير صالح");  
