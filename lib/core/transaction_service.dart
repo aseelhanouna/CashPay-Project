@@ -33,7 +33,13 @@ class TransactionService {
     final String amountStr = amount.toStringAsFixed(2); // توحيد الكسور
 
     // استخدام CryptoHelper الموحد لضمان مطابقة الـ Scan
-    final String rawData = "$txId|$senderId|$amountStr|$timestamp";
+    final String rawData = CryptoHelper.buildRawData(
+  txId: txId,
+  senderId: senderId,
+  amountStr: amountStr,
+  timestamp: timestamp,
+);
+
     final String signature = CryptoHelper.sign(rawData, senderId);
 
     // ⭐ خصم المبلغ من الرصيد فوراً (لأن الـ QR أصبح يمثل المال)
