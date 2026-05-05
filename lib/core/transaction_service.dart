@@ -56,19 +56,7 @@ class TransactionService {
   }
 
   // 📥 استقبال أموال
-  static Future<void> receiveMoney({
-    required Map<String, dynamic> tokenData,
-    required int currentUserId,
-  }) async {
-    
-    if (await SessionManager.isBlocked()) {
-      throw Exception("🚨 التطبيق مقفل - وضع قراءة فقط");
-    }
-
-    if (tokenData['receiver'] != currentUserId) {
-      throw Exception("❌ هذا الـ QR ليس موجهاً لك");
-    }
-
+  
     final db = DatabaseHelper.instance;
 
     try {
