@@ -50,26 +50,35 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   Future<void> _processQR(String raw) async {
     if (await SessionManager.isBlocked()) throw Exception("التطبيق محظور مؤقتاً");
 
-    final data = jsonDecode(raw);
+    final Map<String, dynamic> data = jsonDecode(raw);
+    
+    // سحب البيانات كنصوص خام لضمان عدم تغير التنسيق
     final String txId = data['tx_id'].toString().trim();
     final int senderId = int.tryParse(data['sender_id'].toString()) ?? 0;
     final String amountStr = data['amount'].toString().trim();
     final int timestamp = int.tryParse(data['timestamp'].toString()) ?? 0;
     final String signature = data['signature'].toString().trim();
 
-    if (txId.isEmpty || senderId <= 0) throw Exception("بيانات الرمز غير مكتملة");
+    if (txId.isEmpty || senderId <= 0) throw Exception("بيانات الرمز ناقصة");
 
-    // 1. التحقق من التوقيع باستخدام الـ Helper الموحد
-    final String rawData = "$txId|$senderId|$amountStr|$timestamp";
-    final expected = CryptoHelper.sign(rawData, senderId);
+    // استخدام الـ Helper لبناء نفس النص تماماً كما في صفحة الإرسال
+    final String rawData = CryptoHelper.buildRawData(
+      txId: txId,
+      senderId: senderId,
+      amountStr: amountStr,
+      timestamp: timestamp,
+    );
 
-    if (expected != signature) throw Exception("تم التلاعب بالبيانات");
+    // التحقق من التوقيع
+    if (!CryptoHelper.verify(rawData, signature, senderId)) {
+      throw Exception("تم التلاعب بالبيانات (فشل التحقق)");
+    }
 
-    // 2. التحقق من الوقت (5 دقائق)
+    // التحقق من الوقت (5 دقائق)
     final now = DateTime.now().millisecondsSinceEpoch;
     if ((now - timestamp).abs() > 5 * 60 * 1000) throw Exception("انتهت صلاحية الرمز");
 
-    // 3. التحقق من التكرار
+    // التحقق من التكرار
     if (await DatabaseHelper.instance.isTransactionExists(txId)) throw Exception("الرمز مستخدم مسبقاً");
 
     final double amount = double.parse(amountStr);
@@ -88,6 +97,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
 
     SyncService.syncTransactions(widget.receiverId);
     _showSuccess(amount);
+    
     if (mounted) Navigator.pop(context);
   }
 
@@ -97,7 +107,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         title: const Text("تأكيد الاستلام"),
-        content: Text("هل تريد استلام $amount شيكل من $senderId؟"),
+        content: Text("استلام $amount شيكل من المرسل رقم $senderId؟"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("إلغاء")),
           ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("تأكيد")),
@@ -107,10 +117,12 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   }
 
   void _handleError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red));
   }
 
   void _showSuccess(double amount) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم استلام $amount بنجاح"), backgroundColor: Colors.green));
   }
 
