@@ -85,10 +85,11 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     final String txId = data['tx_id'] ?? '';
     final int senderId =
         int.tryParse(data['sender_id'].toString()) ?? 0;
-    final int receiverId =
-        int.tryParse(data['receiver_id'].toString()) ?? 0;
+    final String amountStr = data['amount']?.toString() ?? "0.00"; 
+
     final double amount =
-        double.tryParse(data['amount'].toString()) ?? 0.0;
+        double.tryParse(amountStr) ?? 0.0;
+
     final int timestamp =
         int.tryParse(data['timestamp'].toString()) ?? 0;
     final String signature = data['signature'] ?? '';
