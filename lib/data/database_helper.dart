@@ -193,10 +193,15 @@ class DatabaseHelper {
     }
 
     await db.transaction((txn) async {
-      if (await isTransactionExists(txId)) {
-          throw Exception("⚠️ مستخدم مسبقاً");
-          }
-      
+  final existing = await txn.query(
+    'transactions',
+    where: 'tx_id = ?',
+    whereArgs: [txId],
+  );
+
+  if (existing.isNotEmpty) {
+    throw Exception("⚠️ مستخدم مسبقاً");
+  }
 
       final now = DateTime.now().millisecondsSinceEpoch;
       if (now - timestamp > 5 * 60 * 1000) {
@@ -206,7 +211,6 @@ class DatabaseHelper {
       final valid = verifySignature(
         txId: txId,
         senderId: senderId,
-        receiverId: receiverId,
         amount: amount,
         timestamp: timestamp,
         signature: signature,
@@ -299,8 +303,7 @@ class DatabaseHelper {
       [userId, userId],
     );
   }
-
-  Future<bool> isTransactionExists(String txId) async {
+Future<bool> isTransactionExists(String txId) async {
     final db = await database;
 
     final result = await db.query(
@@ -309,6 +312,7 @@ class DatabaseHelper {
       whereArgs: [txId],
     );
 
+  
     // إذا كانت النتيجة ليست فارغة، فهذا يعني أن العملية مسجلة مسبقاً
     return result.isNotEmpty;
   }
