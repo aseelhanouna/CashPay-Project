@@ -6,6 +6,7 @@ import 'package:path/path.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
 import '../core/session_manager.dart';
 import 'package:flutter/foundation.dart';
+import '../security/crypto_helper.dart';
 
 class DatabaseHelper {
 static final DatabaseHelper instance = DatabaseHelper._init();
