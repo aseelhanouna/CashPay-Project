@@ -39,6 +39,7 @@ class DatabaseHelper {
         id_number TEXT UNIQUE,
         name TEXT,
         password TEXT,
+        birthDate TEXT
         salt TEXT,
         balance REAL DEFAULT 100.0,
         sync_status TEXT DEFAULT 'pending'
