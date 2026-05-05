@@ -21,156 +21,82 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
   @override
   void initState() {
     super.initState();
-    // 2. استدعاء الدالة عند التشغيل
     _loadBalance();
   }
 
-  // =========================
-  // DIALOG
-  // =========================
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("حدث خطأ"),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("حسناً"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // =========================
-  //  GENERATE QR
-  // =========================
   Future<void> _generateQR() async {
     try {
-      if (await SessionManager.isBlocked()) {
-        int seconds = (await SessionManager.getRemainingTime() / 1000).round();
-        throw Exception("التطبيق محظور ($seconds ثانية متبقية)");
-      }
+      if (await SessionManager.isBlocked()) throw Exception("التطبيق محظور مؤقتاً");
 
       final amount = double.tryParse(_amountController.text);
-      if (amount == null || amount <= 0) {
-        throw Exception("الرجاء إدخال مبلغ صحيح.");
-      }
-final String formattedAmount = amount.toStringAsFixed(2);
+      if (amount == null || amount <= 0) throw Exception("أدخل مبلغاً صحيحاً");
+      if (amount > currentBalance) throw Exception("رصيدك غير كافٍ");
 
+      final String formattedAmount = amount.toStringAsFixed(2);
+      final String txId = "TX${DateTime.now().millisecondsSinceEpoch}";
+      final int timestamp = DateTime.now().millisecondsSinceEpoch;
 
-      final String txId = "TX${DateTime.now().millisecondsSinceEpoch}"; 
-    final int senderId = widget.userId;
-    final int timestamp = DateTime.now().millisecondsSinceEpoch;
+      // توحيد بناء النص الخام
+      final String rawData = "$txId|${widget.userId}|$formattedAmount|$timestamp";
+      final String signature = CryptoHelper.sign(rawData, widget.userId);
 
-    
-    final String rawData = "$txId|$senderId|$formattedAmount|$timestamp";
+      final qrPayload = {
+        'tx_id': txId,
+        'sender_id': widget.userId,
+        'amount': formattedAmount,
+        'timestamp': timestamp,
+        'signature': signature,
+      };
 
-    final String signature = CryptoHelper.sign(rawData, senderId);
-
-   
-    final qrPayload = {
-      'tx_id': txId,
-      'sender_id': senderId,
-      'amount': formattedAmount,
-      'timestamp': timestamp,
-      'signature': signature,
-    };
-
-    setState(() {
-      _qrData = jsonEncode(qrPayload);
-    });
-  } catch (e) {
-    rethrow;
+      setState(() {
+        _qrData = jsonEncode(qrPayload);
+      });
+    } catch (e) {
+      _showErrorDialog(e.toString().replaceFirst("Exception: ", ""));
+    }
   }
-}
 
   Future<void> _loadBalance() async {
-    int? myId = await SessionManager.getUserId();
+    double balance = await DatabaseHelper.instance.getUserBalance(widget.userId);
+    if (mounted) setState(() => currentBalance = balance);
+  }
 
-    if (myId != null) {
-      double balance = await DatabaseHelper.instance.getUserBalance(myId);
-      if (mounted) {
-        setState(() {
-          currentBalance = balance;
-        });
-      }
-     
-    }
+  void _showErrorDialog(String message) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text("خطأ"), content: Text(message), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("حسناً"))]));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("إرسال الأموال")),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Card(
-            color: Colors.blue.shade50,
-            child: ListTile(
-              leading: const Icon(Icons.account_balance_wallet, color: Colors.blue),
-              title: const Text("رصيدك الحالي"),
-              trailing: Text(
-                "${currentBalance.toStringAsFixed(2)} شيكل", 
-                style: const TextStyle(
-                  fontSize: 20, 
-                  fontWeight: FontWeight.bold, 
-                  color: Colors.blueGrey
-                ),
+              color: Colors.blue.shade50,
+              child: ListTile(
+                leading: const Icon(Icons.account_balance_wallet, color: Colors.blue),
+                title: const Text("رصيدك الحالي"),
+                trailing: Text("${currentBalance.toStringAsFixed(2)} ₪", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
             ),
-          ),
-            // =========================
-            // 🖼️ QR DISPLAY
-            // =========================
+            const SizedBox(height: 30),
             if (_qrData != null)
-              QrImageView(data: _qrData!, version: QrVersions.auto, size: 200.0)
+              QrImageView(data: _qrData!, size: 200.0, backgroundColor: Colors.white)
             else
               const Icon(Icons.qr_code_scanner, size: 150, color: Colors.grey),
-
-            const SizedBox(height: 40),
-
-            // =========================
-            // 💰 AMOUNT INPUT
-            // =========================
+            const SizedBox(height: 30),
             TextField(
               controller: _amountController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: "المبلغ",
-                prefixIcon: Icon(Icons.attach_money),
-                border: OutlineInputBorder(),
-              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: "المبلغ المراد إرساله", border: OutlineInputBorder(), prefixIcon: Icon(Icons.send)),
             ),
             const SizedBox(height: 20),
-
-            // =========================
-            // 🚀 GENERATE BUTTON
-            // =========================
-            ElevatedButton.icon(
-              icon: const Icon(Icons.qr_code_2),
-              label: const Text("إنشاء رمز QR"),
-              onPressed: () async {
-                try {
-                  await _generateQR();
-                } catch (e) {
-                  _showErrorDialog(
-                    e.toString().replaceFirst("Exception: ", ""),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 15),
-                textStyle: const TextStyle(fontSize: 16),
-              ),
+            ElevatedButton(
+              onPressed: _generateQR,
+              style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+              child: const Text("إنشاء الرمز"),
             ),
           ],
         ),
