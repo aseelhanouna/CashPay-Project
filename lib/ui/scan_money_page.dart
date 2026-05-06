@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:myapp/core/transaction_service.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import '../sync/sync_service.dart';
 import '../data/database_helper.dart';
+import '../core/session_manager.dart';
+import '../security/crypto_helper.dart';
 
 class SendMoneyPage extends StatefulWidget {
   final int userId;
