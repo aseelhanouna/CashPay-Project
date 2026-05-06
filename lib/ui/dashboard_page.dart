@@ -5,6 +5,7 @@ import '../ui/send_money_page.dart';
 import '../ui/history_page.dart';
 import '../core/session_manager.dart';
 import 'package:myapp/sync/sync_service.dart';
+import 'package:myapp/main.dart' show LoginPage;
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,195 +21,174 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   double _balance = 0.0;
   bool _isLoading = true;
+  Timer? _syncTimer;
 
   @override
   void initState() {
     super.initState();
-    _loadUserData(); // سيحمل من SQLite أولاً ثم Firebase
-  
-  // مزامنة فورية عند الدخول
-  SyncService.syncTransactions(widget.userId);
-
-  // مزامنة دورية كل دقيقة
-  Timer.periodic(const Duration(minutes: 1), (timer) {
-    if (mounted) {
-      SyncService.syncTransactions(widget.userId);
-    }
-  });
+    _loadUserData();
+    SyncService.syncTransactions(widget.userId);
+    _syncTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) {
+        SyncService.syncTransactions(widget.userId);
+      }
+    });
   }
-
- Future<void> _loadUserData() async {
-  setState(() => _isLoading = true);
-
-  try {
-    // 1. أولاً: جلب الرصيد من SQLite (عشان يظهر فوراً للأوفلاين)
-    double localBalance = await DatabaseHelper.instance.getUserBalance(widget.userId);
-    
-    if (mounted) {
-      setState(() {
-        _balance = localBalance;
-        _isLoading = false;
-      });
-    }
-
-    // 2. ثانياً: محاولة جلب الرصيد الحديث من Firebase (إذا فيه إنترنت)
-    DocumentSnapshot userDoc = await FirebaseFirestore.instance
-        .collection("users")
-        .doc(widget.userId.toString())
-        .get();
-
-    if (userDoc.exists && mounted) {
-      double serverBalance = (userDoc.data() as Map<String, dynamic>)['balance']?.toDouble() ?? 100.0;
-      
-      // تحديث الواجهة وتحديث SQLite بالرصيد الجديد القادم من السيرفر
-      setState(() {
-        _balance = serverBalance;
-      });
-      // تحديث محلي لضمان التطابق
-      await DatabaseHelper.instance.updateUserBalance(widget.userId, serverBalance); 
-    }
-  } catch (e) {
-    debugPrint("Offline mode: showing local balance only.");
-    if (mounted) setState(() => _isLoading = false);
-  }
-}
 
   @override
-Widget build(BuildContext context) {
-  return FutureBuilder<bool>(
-    future: SessionManager.isBlocked(),
-    builder: (context, snapshot) {
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
+  }
 
-      if (snapshot.data == true) {
-        return Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.lock, size: 80),
-                SizedBox(height: 20),
-                Text(
-                  "التطبيق مقفل مؤقتًا\nيرجى الاتصال بالإنترنت",
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        );
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    try {
+      double localBalance = await DatabaseHelper.instance.getUserBalance(widget.userId);
+      if (mounted) {
+        setState(() {
+          _balance = localBalance;
+          _isLoading = false;
+        });
       }
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(widget.userId.toString())
+          .get();
+      if (userDoc.exists && mounted) {
+        double serverBalance = (userDoc.data() as Map<String, dynamic>)['balance']?.toDouble() ?? 100.0;
+        setState(() {
+          _balance = serverBalance;
+        });
+        await DatabaseHelper.instance.updateUserBalance(widget.userId, serverBalance);
+      }
+    } catch (e) {
+      debugPrint("Offline mode: showing local balance only.");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
-      // 👇 التطبيق الطبيعي
-      return _buildNormalDashboard();
-    },
-  );
-}
-  Widget _buildNormalDashboard() {
-  const Color primaryColor = Color(0xFF001F3F);
-
-  return Scaffold(
-    backgroundColor: Colors.white,
-
-    appBar: AppBar(
-      elevation: 0,
-      backgroundColor: Colors.white,
-      title: const Text(
-        "CashPay",
-        style: TextStyle(
-          color: primaryColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 24,
-        ),
-      ),
-      actions: [
-    IconButton(
-      icon: const Icon(Icons.logout, color: Color(0xFF001F3F)),
-      onPressed: () async {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.clear(); // مسح الجلسة
-        if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/login');
-      },
-    ),
-  ],
-    ),
-
-    body: RefreshIndicator(
-      onRefresh: _loadUserData,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-
-            _buildBalanceCard(primaryColor),
-
-            const SizedBox(height: 35),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildActionButton(
-                  Icons.qr_code_scanner,
-                  "مسح QR",
-                  primaryColor,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            ScanMoneyPage(receiverId: widget.userId),
-                      ),
-                    ).then((_) => _loadUserData());
-                  },
-                ),
-                _buildActionButton(
-                  Icons.qr_code_2,
-                  "توليد QR",
-                  primaryColor,
-                  () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            SendMoneyPage(userId: widget.userId),
-                      ),
-                    );
-                  },
-                ),
-                _buildActionButton(Icons.history, "السجل", primaryColor, () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          HistoryPage(userId: widget.userId),
-                    ),
-                  );
-                }),
-                
-              ],
-            ),
-
-            const SizedBox(height: 40),
-
-            const Text(
-              "العمليات الأخيرة",
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF001F3F),
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: SessionManager.isBlocked(),
+      builder: (context, snapshot) {
+        if (snapshot.data == true) {
+          return Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.lock, size: 80),
+                  SizedBox(height: 20),
+                  Text(
+                    "التطبيق مقفل مؤقتًا\nيرجى الاتصال بالإنترنت",
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
+          );
+        }
+        return _buildNormalDashboard();
+      },
+    );
+  }
 
-            const SizedBox(height: 15),
-
-            _buildTransactionsList(primaryColor),
-          ],
+  Widget _buildNormalDashboard() {
+    const Color primaryColor = Color(0xFF001F3F);
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        title: const Text(
+          "CashPay",
+          style: TextStyle(
+            color: primaryColor,
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xFF001F3F)),
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (!mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
+              );
+            },
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadUserData,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            children: [
+              const SizedBox(height: 20),
+              _buildBalanceCard(primaryColor),
+              const SizedBox(height: 35),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildActionButton(
+                    Icons.qr_code_scanner, "مسح QR", primaryColor,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ScanMoneyPage(receiverId: widget.userId),
+                        ),
+                      ).then((_) => _loadUserData());
+                    },
+                  ),
+                  _buildActionButton(
+                    Icons.qr_code_2, "توليد QR", primaryColor,
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SendMoneyPage(userId: widget.userId),
+                        ),
+                      ).then((_) => _loadUserData());
+                    },
+                  ),
+                  _buildActionButton(Icons.history, "السجل", primaryColor, () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => HistoryPage(userId: widget.userId),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 40),
+              const Text(
+                "العمليات الأخيرة",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF001F3F),
+                ),
+              ),
+              const SizedBox(height: 15),
+              _buildTransactionsList(primaryColor),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
+
   Widget _buildBalanceCard(Color color) {
     return Container(
       width: double.infinity,
@@ -222,7 +202,6 @@ Widget build(BuildContext context) {
         children: [
           const Text("الرصيد المتوفر", style: TextStyle(color: Colors.white70)),
           const SizedBox(height: 10),
-
           _isLoading
               ? const CircularProgressIndicator(color: Colors.white)
               : Text(
@@ -238,12 +217,7 @@ Widget build(BuildContext context) {
     );
   }
 
-  Widget _buildActionButton(
-    IconData icon,
-    String label,
-    Color color,
-    VoidCallback onTap,
-  ) {
+  Widget _buildActionButton(IconData icon, String label, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -273,14 +247,12 @@ Widget build(BuildContext context) {
             child: Center(child: CircularProgressIndicator()),
           );
         }
-
         if (!snapshot.hasData || snapshot.data!.isEmpty) {
           return const Padding(
             padding: EdgeInsets.all(30),
             child: Text("لا توجد عمليات بعد"),
           );
         }
-
         return ListView.separated(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -289,18 +261,10 @@ Widget build(BuildContext context) {
           itemBuilder: (context, index) {
             final tx = snapshot.data![index];
             final bool isSent = tx['sender_id'] == widget.userId;
-
-            // 🔥 FIX: timestamp conversion
-            final DateTime date = DateTime.fromMillisecondsSinceEpoch(
-              tx['created_at'] as int,
-            );
-
+            final DateTime date = DateTime.fromMillisecondsSinceEpoch(tx['created_at'] as int);
             String twoDigits(int n) => n.toString().padLeft(2, '0');
-
-            final dateDisplay =
-                "${twoDigits(date.day)}/${twoDigits(date.month)} - "
+            final dateDisplay = "${twoDigits(date.day)}/${twoDigits(date.month)} - "
                 "${twoDigits(date.hour)}:${twoDigits(date.minute)}";
-
             return Row(
               children: [
                 CircleAvatar(
@@ -312,9 +276,7 @@ Widget build(BuildContext context) {
                     color: isSent ? Colors.red : Colors.green,
                   ),
                 ),
-
                 const SizedBox(width: 10),
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,9 +292,8 @@ Widget build(BuildContext context) {
                     ],
                   ),
                 ),
-
                 Text(
-                  "${isSent ? '-' : '+'}\$${tx['amount']}",
+                  "${isSent ? '-' : '+'}\\$${tx['amount']}",
                   style: TextStyle(
                     color: isSent ? Colors.red : Colors.green,
                     fontWeight: FontWeight.bold,
