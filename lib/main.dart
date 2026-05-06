@@ -4,16 +4,16 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../core/session_manager.dart';  
-import 'package:firebase_core/firebase_core.dart';   
+import '../core/session_manager.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:myapp/ui/dashboard_page.dart';
-import 'dart:convert';         
-import 'package:crypto/crypto.dart'; 
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); 
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 
@@ -59,29 +59,29 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     _checkAuth();
-    // تأكدي أن هذه الدالة موجودة في SessionManager
-    SessionManager.updateLastOnline(); 
+    SessionManager.updateLastOnline();
   }
 
   Future<void> _checkAuth() async {
     await Future.delayed(const Duration(milliseconds: 1200));
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    bool isBlocked = prefs.getBool('is_blocked') ?? false;
-    if (isBlocked && mounted) {
-      // تأكدي من وجود BlockedPage في مشروعك أو استبدالها بصفحة أخرى
-      return; 
-    }
-
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     int userId = prefs.getInt('user_id') ?? 0;
 
+    if (!isLoggedIn || userId == 0) {
+      if (mounted) Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+      return;
+    }
+
+    bool isBlocked = await SessionManager.isBlocked();
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => isLoggedIn ? DashboardPage(userId: userId) : const LoginPage(),
-        ),
+        MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)),
       );
     }
   }
@@ -90,7 +90,9 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return const Scaffold(
       backgroundColor: Color(0xFF001F3F),
-      body: Center(child: Icon(Icons.account_balance_wallet, size: 100, color: Colors.white)),
+      body: Center(
+        child: Icon(Icons.account_balance_wallet, size: 100, color: Colors.white),
+      ),
     );
   }
 }
@@ -111,7 +113,9 @@ class _LoginPageState extends State<LoginPage> {
 
   void _showSnackBar(String msg, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: color),
+    );
   }
 
   Future<void> _handleLogin() async {
@@ -127,21 +131,31 @@ class _LoginPageState extends State<LoginPage> {
       if (user != null) {
         await _completeLogin(user['id'], user['name']);
       } else {
-        final cloudDoc = await FirebaseFirestore.instance.collection('users').doc(idInput).get();
+        final cloudDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(idInput)
+            .get();
         if (cloudDoc.exists) {
           final cloudData = cloudDoc.data()!;
-          String inputHash = sha256.convert(utf8.encode(passwordInput + idInput)).toString();
+          String inputHash = sha256
+              .convert(utf8.encode(passwordInput + idInput))
+              .toString();
 
           if (inputHash == cloudData['password']) {
             await DatabaseHelper.instance.createUser({
               'id_number': idInput,
               'name': cloudData['name'],
               'password': cloudData['password'],
-              'salt': idInput, 
+              'salt': idInput,
               'balance': (cloudData['balance'] as num).toDouble(),
               'birthDate': cloudData['birthDate'] ?? '',
             });
-            await _completeLogin(int.parse(idInput), cloudData['name']);
+            final int? parsedId = int.tryParse(idInput);
+            if (parsedId == null) {
+              _showSnackBar("رقم الهوية غير صالح", Colors.red);
+              return;
+            }
+            await _completeLogin(parsedId, cloudData['name']);
           } else {
             _showSnackBar("كلمة المرور غير صحيحة", Colors.orange);
           }
@@ -162,7 +176,11 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.setInt('user_id', userId);
     await prefs.setString('userName', userName);
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)), (route) => false);
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => DashboardPage(userId: userId)),
+      (route) => false,
+    );
   }
 
   @override
@@ -180,16 +198,19 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 20),
               _buildField(c: _passController, label: "كلمة المرور", icon: Icons.lock, isPass: true),
               const SizedBox(height: 30),
-              _isLoading 
-                ? const CircularProgressIndicator() 
-                : ElevatedButton(
-                    onPressed: _handleLogin,
-                    child: const Text("دخول"),
-                  ),
+              _isLoading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                      onPressed: _handleLogin,
+                      child: const Text("دخول"),
+                    ),
               TextButton(
-                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterPage())),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const RegisterPage()),
+                ),
                 child: const Text("لا تملك حساباً؟ سجل الآن"),
-              )
+              ),
             ],
           ),
         ),
@@ -197,14 +218,24 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildField({required TextEditingController c, required String label, required IconData icon, bool isPass = false}) {
+  Widget _buildField({
+    required TextEditingController c,
+    required String label,
+    required IconData icon,
+    bool isPass = false,
+  }) {
     return TextFormField(
       controller: c,
       obscureText: isPass && _hidePass,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
-        suffixIcon: isPass ? IconButton(onPressed: () => setState(() => _hidePass = !_hidePass), icon: Icon(_hidePass ? Icons.visibility_off : Icons.visibility)) : null,
+        suffixIcon: isPass
+            ? IconButton(
+                onPressed: () => setState(() => _hidePass = !_hidePass),
+                icon: Icon(_hidePass ? Icons.visibility_off : Icons.visibility),
+              )
+            : null,
       ),
       validator: (v) => v!.isEmpty ? "مطلوب" : null,
     );
@@ -228,7 +259,9 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _showSnackBar(String msg, Color color) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: color),
+    );
   }
 
   Future<void> _handleRegister() async {
@@ -243,12 +276,20 @@ class _RegisterPageState extends State<RegisterPage> {
     String password = _passController.text;
 
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(nationalId).get();
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(nationalId)
+          .get();
       if (userDoc.exists) throw Exception("رقم الهوية مسجل مسبقاً");
 
-      String hashedPassword = sha256.convert(utf8.encode(password + nationalId)).toString();
+      String hashedPassword = sha256
+          .convert(utf8.encode(password + nationalId))
+          .toString();
 
-      await FirebaseFirestore.instance.collection('users').doc(nationalId).set({
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(nationalId)
+          .set({
         'id_number': nationalId,
         'name': _nameController.text,
         'password': hashedPassword,
@@ -288,12 +329,30 @@ class _RegisterPageState extends State<RegisterPage> {
               _buildField(c: _idController, label: "رقم الهوية", icon: Icons.badge),
               _buildField(c: _nameController, label: "الاسم كامل", icon: Icons.person),
               _buildField(c: _passController, label: "كلمة المرور", icon: Icons.lock, isPass: true),
-              _buildField(c: _dateController, label: "تاريخ الميلاد", icon: Icons.calendar_today, readOnly: true, onTap: () async {
-                DateTime? picked = await showDatePicker(context: context, initialDate: DateTime(2000), firstDate: DateTime(1950), lastDate: DateTime.now());
-                if (picked != null) setState(() => _dateController.text = DateFormat('yyyy-MM-dd').format(picked));
-              }),
+              _buildField(
+                c: _dateController,
+                label: "تاريخ الميلاد",
+                icon: Icons.calendar_today,
+                readOnly: true,
+                onTap: () async {
+                  DateTime? picked = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime(2000),
+                    firstDate: DateTime(1950),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) {
+                    setState(() => _dateController.text = DateFormat('yyyy-MM-dd').format(picked));
+                  }
+                },
+              ),
               const SizedBox(height: 30),
-              _isLoading ? const CircularProgressIndicator() : ElevatedButton(onPressed: _handleRegister, child: const Text("تسجيل")),
+              _isLoading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                      onPressed: _handleRegister,
+                      child: const Text("تسجيل"),
+                    ),
             ],
           ),
         ),
@@ -301,7 +360,14 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildField({required TextEditingController c, required String label, required IconData icon, bool isPass = false, bool readOnly = false, VoidCallback? onTap}) {
+  Widget _buildField({
+    required TextEditingController c,
+    required String label,
+    required IconData icon,
+    bool isPass = false,
+    bool readOnly = false,
+    VoidCallback? onTap,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: TextFormField(
