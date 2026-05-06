@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/database_helper.dart';
-import '../ui/scan_money_page.dart';
-import '../ui/send_money_page.dart';
-import '../ui/history_page.dart';
+import 'package:myapp/ui/scan_money_page.dart';
+import 'package:myapp/ui/send_money_page.dart';
+import 'package:myapp/ui/history_page.dart';
 import '../core/session_manager.dart';
 import 'package:myapp/sync/sync_service.dart';
 import 'package:myapp/main.dart' show LoginPage;
@@ -293,7 +293,7 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 Text(
-                  "${isSent ? '-' : '+'}\\$${tx['amount']}",
+                  "${isSent ? '-' : '+'}${tx['amount']} ₪",
                   style: TextStyle(
                     color: isSent ? Colors.red : Colors.green,
                     fontWeight: FontWeight.bold,
