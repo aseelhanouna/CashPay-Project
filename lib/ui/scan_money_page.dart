@@ -1,144 +1,114 @@
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:flutter/services.dart';
-import '../sync/sync_service.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:myapp/core/transaction_service.dart';
 import '../data/database_helper.dart';
-import '../core/session_manager.dart';
-import '../security/crypto_helper.dart';
 
-class ScanMoneyPage extends StatefulWidget {
-  final int receiverId;
-  const ScanMoneyPage({super.key, required this.receiverId});
+class SendMoneyPage extends StatefulWidget {
+  final int userId;
+  const SendMoneyPage({super.key, required this.userId});
 
   @override
-  State<ScanMoneyPage> createState() => _ScanMoneyPageState();
+  State<SendMoneyPage> createState() => _SendMoneyPageState();
 }
 
-class _ScanMoneyPageState extends State<ScanMoneyPage> {
-  final MobileScannerController _controller = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
-    facing: CameraFacing.back,
-  );
+class _SendMoneyPageState extends State<SendMoneyPage> {
+  final _amountController = TextEditingController();
+  String? _qrData;
+  double currentBalance = 0.0;
 
-  bool isProcessing = false;
+  @override
+  void initState() {
+    super.initState();
+    _loadBalance();
+  }
 
-  void _onDetect(BarcodeCapture capture) async {
-    if (capture.barcodes.isEmpty || isProcessing) return;
-    final raw = capture.barcodes.first.rawValue;
-    if (raw == null) return;
+  Future<void> _loadBalance() async {
+    double balance = await DatabaseHelper.instance.getUserBalance(widget.userId);
+    if (mounted) setState(() => currentBalance = balance);
+  }
 
-    setState(() => isProcessing = true);
+  Future<void> _generateQR() async {
     try {
-      if (_controller.value.isRunning) await _controller.stop();
+      final amount = double.tryParse(_amountController.text);
+      if (amount == null || amount <= 0) throw Exception("أدخل مبلغاً صحيحاً");
+      if (amount > currentBalance) throw Exception("رصيدك الحالي غير كافٍ");
 
-      await Future.any([
-        _processQR(raw),
-        Future.delayed(const Duration(seconds: 8), () => throw Exception("انتهى الوقت"))
-      ]);
+      final String qrJson = await TransactionService.generateTransferToken(
+        senderId: widget.userId,
+        amount: amount,
+      );
+
+      setState(() {
+        _qrData = qrJson;
+        currentBalance -= amount;
+      });
     } catch (e) {
-      _handleError(e.toString().replaceFirst("Exception: ", ""));
-    } finally {
-      if (mounted) {
-        setState(() => isProcessing = false);
-        await _controller.start();
-      }
+      _showErrorDialog(e.toString().replaceFirst("Exception: ", ""));
     }
   }
 
-  Future<void> _processQR(String raw) async {
-    if (await SessionManager.isBlocked()) throw Exception("التطبيق محظور مؤقتاً");
-
-    final Map<String, dynamic> data = jsonDecode(raw);
-    
-    // سحب البيانات كنصوص خام لضمان عدم تغير التنسيق
-    final String txId = data['tx_id'].toString().trim();
-    final int senderId = int.tryParse(data['sender_id'].toString()) ?? 0;
-    final String amountStr = data['amount'].toString().trim();
-    final int timestamp = int.tryParse(data['timestamp'].toString()) ?? 0;
-    final String signature = data['signature'].toString().trim();
-
-    if (txId.isEmpty || senderId <= 0) throw Exception("بيانات الرمز ناقصة");
-
-    // استخدام الـ Helper لبناء نفس النص تماماً كما في صفحة الإرسال
-    final String rawData = CryptoHelper.buildRawData(
-      txId: txId,
-      senderId: senderId,
-      amountStr: amountStr,
-      timestamp: timestamp,
-    );
-
-    // التحقق من التوقيع
-    if (!CryptoHelper.verify(rawData, signature, senderId)) {
-      throw Exception("تم التلاعب بالبيانات (فشل التحقق)");
-    }
-
-    // التحقق من الوقت (5 دقائق)
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if ((now - timestamp).abs() > 5 * 60 * 1000) throw Exception("انتهت صلاحية الرمز");
-
-    // التحقق من التكرار
-    if (await DatabaseHelper.instance.isTransactionExists(txId)) throw Exception("الرمز مستخدم مسبقاً");
-
-    final double amount = double.parse(amountStr);
-
-    final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
-    if (!confirmed) throw Exception("تم إلغاء العملية");
-
-    await DatabaseHelper.instance.receiveTokens(
-      txId: txId,
-      senderId: senderId,
-      receiverId: widget.receiverId,
-      amount: amount,
-      signature: signature,
-      timestamp: timestamp,
-    );
-
-    SyncService.syncTransactions(widget.receiverId);
-    _showSuccess(amount);
-    
-    if (mounted) Navigator.pop(context);
-  }
-
-  Future<bool> _confirmDialog({required int senderId, required double amount}) async {
-    return await showDialog<bool>(
+  void _showErrorDialog(String message) {
+    showDialog(
       context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text("تأكيد الاستلام"),
-        content: Text("استلام $amount شيكل من المرسل رقم $senderId؟"),
+      builder: (ctx) => AlertDialog(
+        title: const Text("خطأ"),
+        content: Text(message),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("إلغاء")),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("تأكيد")),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("حسناً"),
+          )
         ],
       ),
-    ) ?? false;
-  }
-
-  void _handleError(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.red));
-  }
-
-  void _showSuccess(double amount) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("تم استلام $amount بنجاح"), backgroundColor: Colors.green));
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          MobileScanner(controller: _controller, onDetect: _onDetect),
-          Center(child: Container(width: 250, height: 250, decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2)))),
-          if (isProcessing) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator())),
-        ],
+      appBar: AppBar(title: const Text("إرسال الأموال")),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            Card(
+              color: Colors.blue.shade50,
+              child: ListTile(
+                leading: const Icon(Icons.account_balance_wallet, color: Colors.blue),
+                title: const Text("رصيدك الحالي"),
+                trailing: Text(
+                  "${currentBalance.toStringAsFixed(2)} ₪",
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+            if (_qrData != null)
+              QrImageView(data: _qrData!, size: 220.0, backgroundColor: Colors.white)
+            else
+              const Icon(Icons.qr_code_scanner, size: 150, color: Colors.grey),
+            const SizedBox(height: 30),
+            TextField(
+              controller: _amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: "المبلغ",
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.attach_money),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.qr_code_2),
+              label: const Text("إنشاء الرمز"),
+              onPressed: _generateQR,
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
-
-  @override void dispose() { _controller.dispose(); super.dispose(); }
 }
