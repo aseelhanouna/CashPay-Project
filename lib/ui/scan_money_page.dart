@@ -51,7 +51,8 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     final Map<String, dynamic> data = jsonDecode(raw);
     final String txId = data['tx_id'].toString().trim();
     final int senderId = int.tryParse(data['sender_id'].toString()) ?? 0;
-    final String amountStr = data['amount'].toString().trim();
+    final double amountParsed = double.parse(data['amount'].toString().trim());
+final String amountStr = amountParsed.toStringAsFixed(2);
     final int timestamp = int.tryParse(data['timestamp'].toString()) ?? 0;
     final String signature = data['signature'].toString().trim();
 
