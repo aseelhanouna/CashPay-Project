@@ -142,7 +142,7 @@ if (now - timestamp > 5 * 60 * 1000) {
 final data = CryptoHelper.buildRawData(
   txId: txId,
   senderId: senderId,
-  amountStr: amount.toString(),
+  amountStr: amount.toStringAsFixed(2),
   timestamp: timestamp,
 );
 final valid = CryptoHelper.verify(data, signature, senderId);
