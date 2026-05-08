@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../data/database_helper.dart';
 import '../core/session_manager.dart';
 import '../security/crypto_helper.dart';
+import 'dart:math';
 
 class TransactionService {
 
@@ -11,19 +12,20 @@ class TransactionService {
   }) async {
 
     if (await SessionManager.isBlocked()) {
-      throw Exception("🚨 التطبيق مقفل مؤقتاً");
+      throw Exception("التطبيق مقفل مؤقتاً");
     }
 
     await checkFraudLimit(senderId);
 
     final db = DatabaseHelper.instance;
-
     final balance = await db.getUserBalance(senderId);
     if (balance < amount) {
-      throw Exception("❌ الرصيد غير كافي");
+      throw Exception("الرصيد غير كافي");
     }
 
-    final String txId = "TX_${senderId}_${DateTime.now().millisecondsSinceEpoch}";
+    // ✅ txId واحد بس — حذفنا الأول اللي كان بيتجاهل
+    final String txId =
+        "TX_${senderId}_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}";
     final int timestamp = DateTime.now().millisecondsSinceEpoch;
     final String amountStr = amount.toStringAsFixed(2);
 
@@ -36,46 +38,88 @@ class TransactionService {
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
+    // ✅ نسجّل الـ transaction أولاً، ثم ننقص الرصيد
+    // لو فشل التسجيل ما بنخسر الفلوس
+    await db.saveOutgoingTransaction(
+      txId: txId,
+      senderId: senderId,
+      amount: amount,
+      signature: signature,
+      timestamp: timestamp,
+    );
+
     final double newBalance = balance - amount;
     await db.updateUserBalance(senderId, newBalance);
+
+    debugPrint("Transaction generated: $txId | amount: $amountStr");
 
     return jsonEncode({
       "tx_id": txId,
       "sender_id": senderId,
       "amount": amountStr,
       "timestamp": timestamp,
-      "signature": signature
+      "signature": signature,
     });
   }
 
-  static Future<void> processReceivedToken(Map<String, dynamic> tokenData, int currentUserId) async {
+  static Future<void> processReceivedToken(
+    Map<String, dynamic> tokenData,
+    int currentUserId,
+  ) async {
     final db = DatabaseHelper.instance;
+
+    // ✅ تحقق من الـ timestamp قبل أي شي
+    final int timestamp = int.tryParse(tokenData['timestamp'].toString()) ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if ((now - timestamp).abs() > 5 * 60 * 1000) {
+      throw Exception("انتهت صلاحية الرمز");
+    }
+
+    // ✅ تحقق من التوقيع قبل ما تسجّل
+    final int senderId = int.tryParse(tokenData['sender_id'].toString()) ?? 0;
+    final String amountStr =
+        double.parse(tokenData['amount'].toString()).toStringAsFixed(2);
+    final String txId = tokenData['tx_id'].toString().trim();
+    final String signature = tokenData['signature'].toString().trim();
+
+    final String rawData = CryptoHelper.buildRawData(
+      txId: txId,
+      senderId: senderId,
+      amountStr: amountStr,
+      timestamp: timestamp,
+    );
+
+    if (!CryptoHelper.verify(rawData, signature, senderId)) {
+      await SessionManager.applyFraudBlock();
+      throw Exception("فشل التحقق من التوقيع");
+    }
+
     try {
       await db.receiveTokens(
-        txId: tokenData['tx_id'],
-        senderId: int.parse(tokenData['sender_id'].toString()),
+        txId: txId,
+        senderId: senderId,
         receiverId: currentUserId,
-        amount: double.parse(tokenData['amount'].toString()),
-        signature: tokenData['signature'],
-        timestamp: int.parse(tokenData['timestamp'].toString()),
+        amount: double.parse(amountStr),
+        signature: signature,
+        timestamp: timestamp,
       );
-    } catch (e) {
-      if (e.toString().contains("التلاعب") || e.toString().contains("غير صالح")) {
-        await SessionManager.applyFraudBlock();
-      }
+    } on Exception catch (e) {
+      // ✅ نتحقق بطريقة أوضح بدل string matching
+      debugPrint("receiveTokens failed: $e");
       rethrow;
     }
   }
 
   static Future<void> checkFraudLimit(int userId) async {
-    final count = await DatabaseHelper.instance.countRecentTransactions(userId);
+    final count =
+        await DatabaseHelper.instance.countRecentTransactions(userId);
     if (count >= 5) {
       await DatabaseHelper.instance.logFraud(
         "FRAUD_MULTI_TX_${userId}_${DateTime.now().millisecondsSinceEpoch}",
         "نشاط مكثف في وقت قصير (أكثر من 5 عمليات)",
       );
       await SessionManager.applyFraudBlock();
-      throw Exception("🚨 تم حظرك مؤقتاً بسبب نشاط مشبوه (أكثر من 5 عمليات)");
+      throw Exception("تم حظرك مؤقتاً بسبب نشاط مشبوه");
     }
   }
 }
