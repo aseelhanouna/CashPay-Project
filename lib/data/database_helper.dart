@@ -155,6 +155,9 @@ final sender = await txn.query(
   whereArgs: [senderId],
   columns: ['balance'],
 );
+if (sender.isEmpty) {
+  throw Exception("❌ المرسل غير موجود");
+}
 final balance = (sender.first['balance'] as num).toDouble();
 if (balance < amount) {
   throw Exception("❌ رصيد غير كافي");
