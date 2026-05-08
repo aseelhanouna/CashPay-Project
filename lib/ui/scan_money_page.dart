@@ -22,23 +22,29 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   );
 
   bool isProcessing = false;
+  bool _isDisposed = false; 
 
   void _onDetect(BarcodeCapture capture) async {
+    
     if (capture.barcodes.isEmpty || isProcessing) return;
-    final raw = capture.barcodes.first.rawValue;
-    if (raw == null) return;
+
+    final barcode = capture.barcodes.first;
+    if (barcode.rawValue == null || barcode.rawValue!.trim().isEmpty) return;
+
+    final raw = barcode.rawValue!.trim();
 
     setState(() => isProcessing = true);
     try {
       if (_controller.value.isRunning) await _controller.stop();
       await Future.any([
         _processQR(raw),
-        Future.delayed(const Duration(seconds: 8), () => throw Exception("انتهى الوقت"))
+        Future.delayed(const Duration(seconds: 8), () => throw Exception("انتهى الوقت")),
       ]);
     } catch (e) {
       _handleError(e.toString().replaceFirst("Exception: ", ""));
     } finally {
-      if (mounted) {
+      
+      if (!_isDisposed && mounted) {
         setState(() => isProcessing = false);
         await _controller.start();
       }
@@ -51,10 +57,12 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     final Map<String, dynamic> data = jsonDecode(raw);
     final String txId = data['tx_id'].toString().trim();
     final int senderId = int.tryParse(data['sender_id'].toString()) ?? 0;
-    final double amountParsed = double.parse(data['amount'].toString().trim());
-final String amountStr = amountParsed.toStringAsFixed(2);
     final int timestamp = int.tryParse(data['timestamp'].toString()) ?? 0;
     final String signature = data['signature'].toString().trim();
+
+    
+    final double amount = double.parse(data['amount'].toString().trim());
+    final String amountStr = amount.toStringAsFixed(2);
 
     if (txId.isEmpty || senderId <= 0) throw Exception("بيانات الرمز ناقصة");
 
@@ -74,7 +82,6 @@ final String amountStr = amountParsed.toStringAsFixed(2);
 
     if (await DatabaseHelper.instance.isTransactionExists(txId)) throw Exception("الرمز مستخدم مسبقاً");
 
-    final double amount = double.parse(amountStr);
     final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
     if (!confirmed) throw Exception("تم إلغاء العملية");
 
@@ -87,7 +94,13 @@ final String amountStr = amountParsed.toStringAsFixed(2);
       timestamp: timestamp,
     );
 
-    unawaited(SyncService.syncTransactions(widget.receiverId));
+    
+    unawaited(
+      SyncService.syncTransactions(widget.receiverId).catchError((e) {
+        debugPrint("Sync error: $e");
+      }),
+    );
+
     _showSuccess(amount);
     if (mounted) Navigator.pop(context);
   }
@@ -100,8 +113,14 @@ final String amountStr = amountParsed.toStringAsFixed(2);
         title: const Text("تأكيد الاستلام"),
         content: Text("استلام $amount شيكل من المرسل رقم $senderId؟"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("إلغاء")),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text("تأكيد")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("إلغاء"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("تأكيد"),
+          ),
         ],
       ),
     ) ?? false;
@@ -109,6 +128,7 @@ final String amountStr = amountParsed.toStringAsFixed(2);
 
   void _handleError(String message) {
     if (!mounted) return;
+    debugPrint("ScanMoneyPage error: $message"); // ✅ logging
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
@@ -128,13 +148,20 @@ final String amountStr = amountParsed.toStringAsFixed(2);
       body: Stack(
         children: [
           MobileScanner(controller: _controller, onDetect: _onDetect),
-          Center(child: Container(
-            width: 250,
-            height: 250,
-            decoration: BoxDecoration(border: Border.all(color: Colors.white, width: 2)),
-          )),
+          Center(
+            child: Container(
+              width: 250,
+              height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+            ),
+          ),
           if (isProcessing)
-            Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator())),
+            Container(
+              color: Colors.black54,
+              child: const Center(child: CircularProgressIndicator()),
+            ),
         ],
       ),
     );
@@ -142,6 +169,7 @@ final String amountStr = amountParsed.toStringAsFixed(2);
 
   @override
   void dispose() {
+    _isDisposed = true; 
     _controller.dispose();
     super.dispose();
   }
