@@ -34,10 +34,10 @@ class DatabaseHelper {
     }
     return await openDatabase(
       path,
-      version: 2, // ✅ رفعنا الـ version لأن في تغيير بالجدول
+      version: 2,
       password: key,
       onCreate: _createDB,
-      onUpgrade: _onUpgrade, // ✅ أضفنا migration
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -60,7 +60,7 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         tx_id TEXT UNIQUE NOT NULL,
         sender_id INTEGER NOT NULL,
-        receiver_id INTEGER, -- ✅ قابل null الحين
+        receiver_id INTEGER,
         amount REAL NOT NULL,
         type TEXT NOT NULL,
         status TEXT NOT NULL,
@@ -82,10 +82,8 @@ class DatabaseHelper {
     ''');
   }
 
-  // ✅ migration من version 1 إلى 2
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      // نغيّر receiver_id يقبل null عبر إعادة بناء الجدول
       await db.execute('ALTER TABLE transactions RENAME TO transactions_old');
       await db.execute('''
         CREATE TABLE transactions (
@@ -104,22 +102,20 @@ class DatabaseHelper {
           synced_at INTEGER
         )
       ''');
-      await db.execute('''
-        INSERT INTO transactions
-        SELECT * FROM transactions_old
-      ''');
+      await db.execute('INSERT INTO transactions SELECT * FROM transactions_old');
       await db.execute('DROP TABLE transactions_old');
+      debugPrint("DB upgraded to v2: receiver_id now nullable");
     }
   }
 
   Future<int> createUser(Map<String, dynamic> user) async {
     final dbClient = await database;
-    final List<Map<String, dynamic>> res = await dbClient.query(
+    final existing = await dbClient.query(
       'users',
       where: 'id_number = ?',
       whereArgs: [user['id_number']],
     );
-    if (res.isNotEmpty) {
+    if (existing.isNotEmpty) {
       throw Exception("رقم الهوية هذا مستخدم مسبقاً");
     }
     return await dbClient.insert(
@@ -160,21 +156,18 @@ class DatabaseHelper {
     }
 
     await db.transaction((txn) async {
-      // ✅ تحقق من التكرار
       final existing = await txn.query(
         'transactions',
-        where: 'tx_id = ?',
-        whereArgs: [txId],
+        where: 'tx_id = ? AND status = ?',
+        whereArgs: [txId, 'completed'],
       );
       if (existing.isNotEmpty) throw Exception("مستخدم مسبقاً");
 
-      // ✅ تحقق من الوقت
       final now = DateTime.now().millisecondsSinceEpoch;
       if ((now - timestamp).abs() > 5 * 60 * 1000) {
         throw Exception("انتهت صلاحية QR");
       }
 
-      // ✅ تحقق من التوقيع
       final data = CryptoHelper.buildRawData(
         txId: txId,
         senderId: senderId,
@@ -185,7 +178,6 @@ class DatabaseHelper {
         throw Exception("QR غير صالح");
       }
 
-      // ✅ تحقق من وجود المرسل ورصيده
       final sender = await txn.query(
         'users',
         where: 'id = ?',
@@ -195,9 +187,8 @@ class DatabaseHelper {
       if (sender.isEmpty) throw Exception("المرسل غير موجود");
 
       final balance = (sender.first['balance'] as num).toDouble();
-      if (balance < amount) throw Exception("رصيد غير كافي");
+      if (balance < amount) throw Exception("رصيد المرسل غير كافٍ");
 
-      // ✅ تحديث الأرصدة
       await txn.rawUpdate(
         'UPDATE users SET balance = balance - ? WHERE id = ?',
         [amount, senderId],
@@ -207,7 +198,6 @@ class DatabaseHelper {
         [amount, receiverId],
       );
 
-      // ✅ تسجيل العملية — نحدّث السجل لو موجود كـ outgoing، أو نضيف جديد
       final outgoing = await txn.query(
         'transactions',
         where: 'tx_id = ? AND status = ?',
@@ -215,7 +205,6 @@ class DatabaseHelper {
       );
 
       if (outgoing.isNotEmpty) {
-        // تحديث السجل الموجود
         await txn.update(
           'transactions',
           {
@@ -229,7 +218,6 @@ class DatabaseHelper {
           whereArgs: [txId],
         );
       } else {
-        // إضافة سجل جديد
         await txn.insert('transactions', {
           'tx_id': txId,
           'sender_id': senderId,
@@ -265,8 +253,8 @@ class DatabaseHelper {
     final db = await database;
     return await db.query(
       'transactions',
-      where: 'sender_id = ? OR receiver_id = ?',
-      whereArgs: [userId, userId],
+      where: '(sender_id = ? OR receiver_id = ?) AND status = ?',
+      whereArgs: [userId, userId, 'completed'],
       orderBy: 'created_at DESC',
       limit: 20,
     );
@@ -281,7 +269,7 @@ class DatabaseHelper {
       FROM transactions t
       LEFT JOIN users sender ON sender.id = t.sender_id
       LEFT JOIN users receiver ON receiver.id = t.receiver_id
-      WHERE t.sender_id = ? OR t.receiver_id = ?
+      WHERE (t.sender_id = ? OR t.receiver_id = ?) AND t.status = 'completed'
       ORDER BY t.created_at DESC
     ''', [userId, userId]);
   }
@@ -290,8 +278,8 @@ class DatabaseHelper {
     final db = await database;
     final result = await db.query(
       'transactions',
-      where: 'tx_id = ?',
-      whereArgs: [txId],
+      where: 'tx_id = ? AND status = ?',
+      whereArgs: [txId, 'completed'],
     );
     return result.isNotEmpty;
   }
@@ -312,8 +300,8 @@ class DatabaseHelper {
     final db = await instance.database;
     return await db.query(
       'transactions',
-      where: 'sync_status = ? OR sync_status = ?',
-      whereArgs: ['pending', 'failed'],
+      where: '(sync_status = ? OR sync_status = ?) AND status = ?',
+      whereArgs: ['pending', 'failed', 'completed'],
     );
   }
 
@@ -327,6 +315,7 @@ class DatabaseHelper {
       FROM transactions
       WHERE (sender_id = ? OR receiver_id = ?)
       AND created_at > ?
+      AND status = 'completed'
     ''', [userId, userId, fiveMinutesAgo]);
     return Sqflite.firstIntValue(result) ?? 0;
   }
@@ -365,9 +354,10 @@ class DatabaseHelper {
 
   Future<int> topUpBalance(int userId, double amount) async {
     final db = await instance.database;
-    return await db.rawUpdate('''
-      UPDATE users SET balance = balance + ? WHERE id = ?
-    ''', [amount, userId]);
+    return await db.rawUpdate(
+      'UPDATE users SET balance = balance + ? WHERE id = ?',
+      [amount, userId],
+    );
   }
 
   Future<void> updateUserBalance(int userId, double newBalance) async {
@@ -394,7 +384,7 @@ class DatabaseHelper {
       {
         'tx_id': txId,
         'sender_id': senderId,
-        'receiver_id': null, // ✅ الحين الجدول يقبل null
+        'receiver_id': null,
         'amount': amount,
         'signature': signature,
         'timestamp': timestamp,
