@@ -22,10 +22,9 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   );
 
   bool isProcessing = false;
-  bool _isDisposed = false; 
+  bool _isDisposed = false;
 
   void _onDetect(BarcodeCapture capture) async {
-    
     if (capture.barcodes.isEmpty || isProcessing) return;
 
     final barcode = capture.barcodes.first;
@@ -38,12 +37,14 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       if (_controller.value.isRunning) await _controller.stop();
       await Future.any([
         _processQR(raw),
-        Future.delayed(const Duration(seconds: 8), () => throw Exception("انتهى الوقت")),
+        Future.delayed(
+          const Duration(seconds: 8),
+          () => throw Exception("انتهى الوقت"),
+        ),
       ]);
     } catch (e) {
       _handleError(e.toString().replaceFirst("Exception: ", ""));
     } finally {
-      
       if (!_isDisposed && mounted) {
         setState(() => isProcessing = false);
         await _controller.start();
@@ -59,12 +60,16 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     final int senderId = int.tryParse(data['sender_id'].toString()) ?? 0;
     final int timestamp = int.tryParse(data['timestamp'].toString()) ?? 0;
     final String signature = data['signature'].toString().trim();
-
-    
     final double amount = double.parse(data['amount'].toString().trim());
     final String amountStr = amount.toStringAsFixed(2);
 
     if (txId.isEmpty || senderId <= 0) throw Exception("بيانات الرمز ناقصة");
+
+    // ✅ ترتيب التحققات: وقت ← توقيع ← تكرار
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if ((now - timestamp).abs() > 5 * 60 * 1000) {
+      throw Exception("انتهت صلاحية الرمز");
+    }
 
     final String rawData = CryptoHelper.buildRawData(
       txId: txId,
@@ -72,15 +77,13 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       amountStr: amountStr,
       timestamp: timestamp,
     );
-
     if (!CryptoHelper.verify(rawData, signature, senderId)) {
       throw Exception("تم التلاعب بالبيانات (فشل التحقق)");
     }
 
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if ((now - timestamp).abs() > 5 * 60 * 1000) throw Exception("انتهت صلاحية الرمز");
-
-    if (await DatabaseHelper.instance.isTransactionExists(txId)) throw Exception("الرمز مستخدم مسبقاً");
+    if (await DatabaseHelper.instance.isTransactionExists(txId)) {
+      throw Exception("الرمز مستخدم مسبقاً");
+    }
 
     final confirmed = await _confirmDialog(senderId: senderId, amount: amount);
     if (!confirmed) throw Exception("تم إلغاء العملية");
@@ -94,7 +97,6 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
       timestamp: timestamp,
     );
 
-    
     unawaited(
       SyncService.syncTransactions(widget.receiverId).catchError((e) {
         debugPrint("Sync error: $e");
@@ -105,30 +107,35 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
     if (mounted) Navigator.pop(context);
   }
 
-  Future<bool> _confirmDialog({required int senderId, required double amount}) async {
+  Future<bool> _confirmDialog({
+    required int senderId,
+    required double amount,
+  }) async {
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text("تأكيد الاستلام"),
-        content: Text("استلام $amount شيكل من المرسل رقم $senderId؟"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("إلغاء"),
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            title: const Text("تأكيد الاستلام"),
+            content: Text(
+                "استلام ${amount.toStringAsFixed(2)} شيكل من المرسل رقم $senderId؟"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text("إلغاء"),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text("تأكيد"),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("تأكيد"),
-          ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   void _handleError(String message) {
     if (!mounted) return;
-    debugPrint("ScanMoneyPage error: $message"); // ✅ logging
+    debugPrint("ScanMoneyPage error: $message");
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
@@ -137,7 +144,10 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   void _showSuccess(double amount) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("تم استلام $amount بنجاح"), backgroundColor: Colors.green),
+      SnackBar(
+        content: Text("تم استلام ${amount.toStringAsFixed(2)} شيكل بنجاح"),
+        backgroundColor: Colors.green,
+      ),
     );
   }
 
@@ -169,7 +179,7 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
 
   @override
   void dispose() {
-    _isDisposed = true; 
+    _isDisposed = true;
     _controller.dispose();
     super.dispose();
   }
