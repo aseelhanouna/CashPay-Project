@@ -178,17 +178,6 @@ class DatabaseHelper {
         throw Exception("QR غير صالح");
       }
 
-      final sender = await txn.query(
-        'users',
-        where: 'id = ?',
-        whereArgs: [senderId],
-        columns: ['balance'],
-      );
-      if (sender.isEmpty) throw Exception("المرسل غير موجود");
-
-      final balance = (sender.first['balance'] as num).toDouble();
-      if (balance < amount) throw Exception("رصيد المرسل غير كافٍ");
-
       await txn.rawUpdate(
         'UPDATE users SET balance = balance - ? WHERE id = ?',
         [amount, senderId],
