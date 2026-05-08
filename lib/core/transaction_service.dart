@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
 import '../data/database_helper.dart';
 import '../core/session_manager.dart';
 import '../security/crypto_helper.dart';
-import 'dart:math';
 
 class TransactionService {
 
@@ -23,7 +24,6 @@ class TransactionService {
       throw Exception("الرصيد غير كافي");
     }
 
-    // ✅ txId واحد بس — حذفنا الأول اللي كان بيتجاهل
     final String txId =
         "TX_${senderId}_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}";
     final int timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -38,8 +38,6 @@ class TransactionService {
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
-    // ✅ نسجّل الـ transaction أولاً، ثم ننقص الرصيد
-    // لو فشل التسجيل ما بنخسر الفلوس
     await db.saveOutgoingTransaction(
       txId: txId,
       senderId: senderId,
@@ -48,9 +46,7 @@ class TransactionService {
       timestamp: timestamp,
     );
 
-    final double newBalance = balance - amount;
-    await db.updateUserBalance(senderId, newBalance);
-
+    await db.updateUserBalance(senderId, balance - amount);
     debugPrint("Transaction generated: $txId | amount: $amountStr");
 
     return jsonEncode({
@@ -66,21 +62,21 @@ class TransactionService {
     Map<String, dynamic> tokenData,
     int currentUserId,
   ) async {
-    final db = DatabaseHelper.instance;
-
-    // ✅ تحقق من الـ timestamp قبل أي شي
     final int timestamp = int.tryParse(tokenData['timestamp'].toString()) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
     if ((now - timestamp).abs() > 5 * 60 * 1000) {
       throw Exception("انتهت صلاحية الرمز");
     }
 
-    // ✅ تحقق من التوقيع قبل ما تسجّل
     final int senderId = int.tryParse(tokenData['sender_id'].toString()) ?? 0;
     final String amountStr =
         double.parse(tokenData['amount'].toString()).toStringAsFixed(2);
     final String txId = tokenData['tx_id'].toString().trim();
     final String signature = tokenData['signature'].toString().trim();
+
+    if (txId.isEmpty || senderId <= 0) {
+      throw Exception("بيانات الرمز ناقصة");
+    }
 
     final String rawData = CryptoHelper.buildRawData(
       txId: txId,
@@ -95,7 +91,7 @@ class TransactionService {
     }
 
     try {
-      await db.receiveTokens(
+      await DatabaseHelper.instance.receiveTokens(
         txId: txId,
         senderId: senderId,
         receiverId: currentUserId,
@@ -104,15 +100,13 @@ class TransactionService {
         timestamp: timestamp,
       );
     } on Exception catch (e) {
-      // ✅ نتحقق بطريقة أوضح بدل string matching
       debugPrint("receiveTokens failed: $e");
       rethrow;
     }
   }
 
   static Future<void> checkFraudLimit(int userId) async {
-    final count =
-        await DatabaseHelper.instance.countRecentTransactions(userId);
+    final count = await DatabaseHelper.instance.countRecentTransactions(userId);
     if (count >= 5) {
       await DatabaseHelper.instance.logFraud(
         "FRAUD_MULTI_TX_${userId}_${DateTime.now().millisecondsSinceEpoch}",
