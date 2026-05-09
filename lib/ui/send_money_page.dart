@@ -36,36 +36,63 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
   }
 
   Future<void> _generateQR() async {
-    if (_isGenerating) return;
+  if (_isGenerating) return;
 
-    final amount = double.tryParse(_amountController.text.trim());
-    if (amount == null || amount <= 0) {
-      _showError("أدخل مبلغاً صحيحاً");
-      return;
-    }
-    if (amount > currentBalance) {
-      _showError("رصيدك الحالي غير كافٍ");
-      return;
+  final amount = double.tryParse(_amountController.text.trim());
+
+  if (amount == null || amount <= 0) {
+    _showError("أدخل مبلغاً صحيحاً");
+    return;
+  }
+
+  if (amount > currentBalance) {
+    _showError("رصيدك الحالي غير كافٍ");
+    return;
+  }
+
+  setState(() => _isGenerating = true);
+
+  try {
+
+    // 🔴 خصم الرصيد الحقيقي من قاعدة البيانات
+    await DatabaseHelper.instance.updateBalance(
+      widget.userId,
+      -amount,
+    );
+
+    final String qrJson =
+        await TransactionService.generateTransferToken(
+      senderId: widget.userId,
+      amount: amount,
+    );
+
+    // 🔄 إعادة تحميل الرصيد الحقيقي
+    await _loadBalance();
+
+    if (mounted) {
+      setState(() {
+        _qrData = qrJson;
+      });
     }
 
-    setState(() => _isGenerating = true);
-    try {
-      final String qrJson = await TransactionService.generateTransferToken(
-        senderId: widget.userId,
-        amount: amount,
-      );
-      if (mounted) {
-        setState(() {
-          _qrData = qrJson;
-          currentBalance -= amount;
-        });
-      }
-    } catch (e) {
-      _showError(e.toString().replaceFirst("Exception: ", ""));
-    } finally {
-      if (mounted) setState(() => _isGenerating = false);
+  } catch (e) {
+
+    // إذا فشل الإنشاء رجّع المبلغ
+    await DatabaseHelper.instance.updateBalance(
+      widget.userId,
+      amount,
+    );
+
+    _showError(
+      e.toString().replaceFirst("Exception: ", ""),
+    );
+
+  } finally {
+    if (mounted) {
+      setState(() => _isGenerating = false);
     }
   }
+}
 
   void _showError(String message) {
     if (!mounted) return;
