@@ -151,68 +151,59 @@ class DatabaseHelper {
   }) async {
     final db = await database;
 
+    // التحقق من حالة الجلسة
     if (await SessionManager.isBlocked()) {
       throw Exception("التطبيق مقفل مؤقتاً، لا يمكن إتمام العملية");
     }
 
     await db.transaction((txn) async {
+      // 1. التحقق من عدم تكرار المعاملة
       final existing = await txn.query(
         'transactions',
         where: 'tx_id = ? AND status = ?',
         whereArgs: [txId, 'completed'],
       );
-      if (existing.isNotEmpty) throw Exception("مستخدم مسبقاً");
+      if (existing.isNotEmpty) throw Exception("هذه العملية مسجلة مسبقاً");
 
+      // 2. التحقق من وقت المعاملة (صلاحية QR)
       final now = DateTime.now().millisecondsSinceEpoch;
       if ((now - timestamp).abs() > 5 * 60 * 1000) {
-        throw Exception("انتهت صلاحية QR");
+        throw Exception("انتهت صلاحية رمز QR");
       }
 
-      await txn.rawUpdate(
-        'UPDATE users SET balance = balance - ? WHERE id = ?',
-        [amount, senderId],
+      // 3. خصم الرصيد من المرسل مع التحقق من وجود رصيد كافٍ
+      final rowsAffected = await txn.rawUpdate(
+        'UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?',
+        [amount, senderId, amount],
       );
+
+      if (rowsAffected == 0) {
+        throw Exception("فشلت العملية: الرصيد غير كافٍ أو الحساب غير موجود");
+      }
+
+      // 4. إضافة الرصيد للمستقبل
       await txn.rawUpdate(
         'UPDATE users SET balance = balance + ? WHERE id = ?',
         [amount, receiverId],
       );
 
-      final outgoing = await txn.query(
-        'transactions',
-        where: 'tx_id = ? AND status = ?',
-        whereArgs: [txId, 'pending'],
-      );
-
-      if (outgoing.isNotEmpty) {
-        await txn.update(
-          'transactions',
-          {
-            'receiver_id': receiverId,
-            'status': 'completed',
-            'type': 'transfer',
-            'sync_status': 'pending',
-            'synced_at': null,
-          },
-          where: 'tx_id = ?',
-          whereArgs: [txId],
-        );
-      } else {
-        await txn.insert('transactions', {
-          'tx_id': txId,
-          'sender_id': senderId,
-          'receiver_id': receiverId,
-          'amount': amount,
-          'type': 'transfer',
-          'status': 'completed',
-          'signature': signature,
-          'created_at': now,
-          'timestamp': timestamp,
-          'sync_status': 'pending',
-          'synced_at': null,
-        });
-      }
+      // 5. تسجيل المعاملة في السجل
+      await txn.insert('transactions', {
+        'tx_id': txId,
+        'sender_id': senderId,
+        'receiver_id': receiverId,
+        'amount': amount,
+        'type': 'transfer',
+        'status': 'completed',
+        'signature': signature,
+        'created_at': now,
+        'timestamp': timestamp,
+        'sync_status': 'pending',
+        'synced_at': null,
+      });
     });
   }
+
 
   Future<double> getUserBalance(int userId) async {
     final db = await database;
@@ -376,4 +367,29 @@ class DatabaseHelper {
     );
     debugPrint("Outgoing transaction saved: $txId");
   }
+Future<void> saveCompletedOutgoingTransaction({
+  required String txId,
+  required int senderId,
+  required double amount,
+  required String signature,
+  required int timestamp,
+}) async {
+  final db = await database;
+
+  await db.insert(
+    'transactions',
+    {
+      'tx_id': txId,
+      'sender_id': senderId,
+      'receiver_id': null,
+      'amount': amount,
+      'signature': signature,
+      'timestamp': timestamp,
+      'type': 'transfer',
+      'status': 'completed',
+      'created_at': DateTime.now().millisecondsSinceEpoch,
+      'sync_status': 'pending',
+    },
+  );
+}
 }
