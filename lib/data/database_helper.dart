@@ -168,16 +168,6 @@ class DatabaseHelper {
         throw Exception("انتهت صلاحية QR");
       }
 
-      final data = CryptoHelper.buildRawData(
-        txId: txId,
-        senderId: senderId,
-        amountStr: amount.toStringAsFixed(2),
-        timestamp: timestamp,
-      );
-      if (!CryptoHelper.verify(data, signature, senderId)) {
-        throw Exception("QR غير صالح");
-      }
-
       await txn.rawUpdate(
         'UPDATE users SET balance = balance - ? WHERE id = ?',
         [amount, senderId],
