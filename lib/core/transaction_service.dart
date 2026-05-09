@@ -38,14 +38,13 @@ class TransactionService {
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
-    await db.saveOutgoingTransaction(
-      txId: txId,
-      senderId: senderId,
-      amount: amount,
-      signature: signature,
-      timestamp: timestamp,
-    );
-
+    await db.saveCompletedOutgoingTransaction(
+  txId: txId,
+  senderId: senderId,
+  amount: amount,
+  signature: signature,
+  timestamp: timestamp,
+);
     await db.updateUserBalance(senderId, balance - amount);
     debugPrint("Transaction generated: $txId | amount: $amountStr");
 
