@@ -292,13 +292,14 @@ class _DashboardPageState extends State<DashboardPage> {
                     ],
                   ),
                 ),
-                Text(
-                  "${isSent ? '-' : '+'}${tx['amount']} ₪",
-                  style: TextStyle(
-                    color: isSent ? Colors.red : Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+        Text(
+  "${isSent ? '-' : '+'}${tx['amount']} ₪",
+  style: TextStyle(
+    color: isSent ? Colors.red : Colors.green,
+    fontWeight: FontWeight.bold,
+  ),
+),
+                
               ],
             );
           },
@@ -306,4 +307,4 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
   }
-}
+} 
