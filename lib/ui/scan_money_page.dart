@@ -25,32 +25,43 @@ class _ScanMoneyPageState extends State<ScanMoneyPage> {
   bool _isDisposed = false;
 
   void _onDetect(BarcodeCapture capture) async {
-    if (capture.barcodes.isEmpty || isProcessing) return;
+  // ✅ أول شي قبل أي حاجة
+  if (isProcessing) return;
+  isProcessing = true; // بدون setState هون لأنه أسرع
+  
+  if (capture.barcodes.isEmpty) {
+    isProcessing = false;
+    return;
+  }
 
-    final barcode = capture.barcodes.first;
-    if (barcode.rawValue == null || barcode.rawValue!.trim().isEmpty) return;
+  final barcode = capture.barcodes.first;
+  if (barcode.rawValue == null || barcode.rawValue!.trim().isEmpty) {
+    isProcessing = false;
+    return;
+  }
 
-    final raw = barcode.rawValue!.trim();
+  final raw = barcode.rawValue!.trim();
 
-    setState(() => isProcessing = true);
-    try {
-      if (_controller.value.isRunning) await _controller.stop();
-      await Future.any([
-        _processQR(raw),
-        Future.delayed(
-          const Duration(seconds: 8),
-          () => throw Exception("انتهى الوقت"),
-        ),
-      ]);
-    } catch (e) {
-      _handleError(e.toString().replaceFirst("Exception: ", ""));
-    } finally {
-      if (!_isDisposed && mounted) {
-        setState(() => isProcessing = false);
-        await _controller.start();
-      }
+  try {
+    if (_controller.value.isRunning) await _controller.stop();
+    await Future.any([
+      _processQR(raw),
+      Future.delayed(
+        const Duration(seconds: 8),
+        () => throw Exception("انتهى الوقت"),
+      ),
+    ]);
+  } catch (e) {
+    _handleError(e.toString().replaceFirst("Exception: ", ""));
+  } finally {
+    if (!_isDisposed && mounted) {
+      setState(() => isProcessing = false);
+      await _controller.start();
+    } else {
+      isProcessing = false;
     }
   }
+}
 
   Future<void> _processQR(String raw) async {
     if (await SessionManager.isBlocked()) throw Exception("التطبيق محظور مؤقتاً");
