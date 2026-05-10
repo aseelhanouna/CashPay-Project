@@ -54,11 +54,7 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
 
   try {
 
-    // 🔴 خصم الرصيد الحقيقي من قاعدة البيانات
-    await DatabaseHelper.instance.updateBalance(
-      widget.userId,
-      -amount,
-    );
+    
 
     final String qrJson =
         await TransactionService.generateTransferToken(
@@ -83,11 +79,7 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
 
   } catch (e) {
 
-    // إذا فشل الإنشاء رجّع المبلغ
-    await DatabaseHelper.instance.updateBalance(
-      widget.userId,
-      amount,
-    );
+    
 
     _showError(
       e.toString().replaceFirst("Exception: ", ""),
