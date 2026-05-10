@@ -142,7 +142,7 @@ class DatabaseHelper {
   }
 
    
-    Future<void> receiveTokens({
+  Future<void> receiveTokens({
   required String txId,
   required int senderId,
   required int receiverId,
@@ -164,9 +164,7 @@ class DatabaseHelper {
       where: 'tx_id = ?',
       whereArgs: [txId],
     );
-    if (existing.isNotEmpty) {
-      throw Exception("تم استخدام الرمز مسبقاً");
-    }
+    if (existing.isNotEmpty) throw Exception("تم استخدام الرمز مسبقاً");
 
     // 2. صلاحية QR
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -174,7 +172,7 @@ class DatabaseHelper {
       throw Exception("انتهت صلاحية الرمز");
     }
 
-    // 3. التحقق من رصيد المرسل
+    // 3. التحقق من رصيد المرسل ✅
     final senderResult = await txn.query(
       'users',
       columns: ['balance'],
@@ -200,13 +198,13 @@ class DatabaseHelper {
       [amount, receiverId],
     );
 
-    // 6. تسجيل العملية
+    // 6. تسجيل عملية وحدة بس ✅
     await txn.insert('transactions', {
       'tx_id': txId,
       'sender_id': senderId,
       'receiver_id': receiverId,
       'amount': amount,
-      'type': 'receive',
+      'type': 'transfer',
       'status': 'completed',
       'signature': signature,
       'created_at': now,
