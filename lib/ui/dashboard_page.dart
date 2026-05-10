@@ -41,32 +41,43 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
-  Future<void> _loadUserData() async {
-    setState(() => _isLoading = true);
-    try {
-      double localBalance = await DatabaseHelper.instance.getUserBalance(widget.userId);
-      if (mounted) {
-        setState(() {
-          _balance = localBalance;
-          _isLoading = false;
-        });
-      }
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(widget.userId.toString())
-          .get();
-      if (userDoc.exists && mounted) {
-        double serverBalance = (userDoc.data() as Map<String, dynamic>)['balance']?.toDouble() ?? 100.0;
+Future<void> _loadUserData() async {
+  if (!mounted) return;
+  setState(() => _isLoading = true);
+
+  try {
+    // 1. جلب الرصيد المحلي أولاً وعرضه فوراً
+    double localBalance = await DatabaseHelper.instance.getUserBalance(widget.userId);
+    if (mounted) {
+      setState(() {
+        _balance = localBalance;
+        _isLoading = false;
+      });
+    }
+
+    // 2. محاولة التحديث من السيرفر فقط إذا وجد إنترنت
+    DocumentSnapshot userDoc = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(widget.userId.toString())
+        .get(const GetOptions(source: Source.server)); // إجبار الجلب من السيرفر وليس الكاش
+
+    if (userDoc.exists && mounted) {
+      double serverBalance = (userDoc.data() as Map<String, dynamic>)['balance']?.toDouble() ?? 100.0;
+      
+      // لا تحدث القيمة المحلية إلا إذا كان هناك فرق (منع الوميض في الواجهة)
+      if (serverBalance != localBalance) {
         setState(() {
           _balance = serverBalance;
         });
         await DatabaseHelper.instance.updateUserBalance(widget.userId, serverBalance);
       }
-    } catch (e) {
-      debugPrint("Offline mode: showing local balance only.");
-      if (mounted) setState(() => _isLoading = false);
     }
+  } catch (e) {
+    debugPrint("أنت تعمل حالياً بالوضع الأوفلاين: يتم عرض الرصيد المحلي.");
+    if (mounted) setState(() => _isLoading = false);
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
