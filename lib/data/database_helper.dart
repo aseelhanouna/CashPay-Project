@@ -142,68 +142,65 @@ class DatabaseHelper {
   }
 
   Future<void> receiveTokens({
-    required String txId,
-    required int senderId,
-    required int receiverId,
-    required double amount,
-    required String signature,
-    required int timestamp,
-  }) async {
-    final db = await database;
+  required String txId,
+  required int senderId,
+  required int receiverId,
+  required double amount,
+  required String signature,
+  required int timestamp,
+}) async {
 
-    // التحقق من حالة الجلسة
-    if (await SessionManager.isBlocked()) {
-      throw Exception("التطبيق مقفل مؤقتاً، لا يمكن إتمام العملية");
-    }
+  final db = await database;
 
-    await db.transaction((txn) async {
-      // 1. التحقق من عدم تكرار المعاملة
-      final existing = await txn.query(
-        'transactions',
-        where: 'tx_id = ? AND status = ?',
-        whereArgs: [txId, 'completed'],
-      );
-      if (existing.isNotEmpty) throw Exception("هذه العملية مسجلة مسبقاً");
-
-      // 2. التحقق من وقت المعاملة (صلاحية QR)
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if ((now - timestamp).abs() > 5 * 60 * 1000) {
-        throw Exception("انتهت صلاحية رمز QR");
-      }
-
-      // 3. خصم الرصيد من المرسل مع التحقق من وجود رصيد كافٍ
-      final rowsAffected = await txn.rawUpdate(
-        'UPDATE users SET balance = balance - ? WHERE id = ? AND balance >= ?',
-        [amount, senderId, amount],
-      );
-
-      if (rowsAffected == 0) {
-        throw Exception("فشلت العملية: الرصيد غير كافٍ أو الحساب غير موجود");
-      }
-
-      // 4. إضافة الرصيد للمستقبل
-      await txn.rawUpdate(
-        'UPDATE users SET balance = balance + ? WHERE id = ?',
-        [amount, receiverId],
-      );
-
-      // 5. تسجيل المعاملة في السجل
-      await txn.insert('transactions', {
-        'tx_id': txId,
-        'sender_id': senderId,
-        'receiver_id': receiverId,
-        'amount': amount,
-        'type': 'transfer',
-        'status': 'completed',
-        'signature': signature,
-        'created_at': now,
-        'timestamp': timestamp,
-        'sync_status': 'pending',
-        'synced_at': null,
-      });
-    });
+  if (await SessionManager.isBlocked()) {
+    throw Exception("التطبيق مقفل مؤقتاً");
   }
 
+  await db.transaction((txn) async {
+
+    // منع التكرار
+    final existing = await txn.query(
+      'transactions',
+      where: 'tx_id = ?',
+      whereArgs: [txId],
+    );
+
+    if (existing.isNotEmpty) {
+      throw Exception("تم استخدام الرمز مسبقاً");
+    }
+
+    // صلاحية QR
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    if ((now - timestamp).abs() > 5 * 60 * 1000) {
+      throw Exception("انتهت صلاحية الرمز");
+    }
+
+    // إضافة الرصيد للمستقبل فقط
+    await txn.rawUpdate(
+      '''
+      UPDATE users
+      SET balance = balance + ?
+      WHERE id = ?
+      ''',
+      [amount, receiverId],
+    );
+
+    // تسجيل العملية
+    await txn.insert('transactions', {
+      'tx_id': txId,
+      'sender_id': senderId,
+      'receiver_id': receiverId,
+      'amount': amount,
+      'type': 'receive',
+      'status': 'completed',
+      'signature': signature,
+      'created_at': now,
+      'timestamp': timestamp,
+      'sync_status': 'pending',
+    });
+  });
+}
 
   Future<double> getUserBalance(int userId) async {
     final db = await database;
