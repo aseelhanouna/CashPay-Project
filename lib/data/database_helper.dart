@@ -337,26 +337,40 @@ class DatabaseHelper {
     ''', [newBalance, userId]);
     debugPrint("تم تحديث الرصيد للمستخدم $userId إلى $newBalance");
   }
+
  Future<void> updateBalance(int userId, double amount) async {
   final db = await database;
 
+  // استخدام Transaction لضمان دقة البيانات
+  await db.transaction((txn) async {
+    // 1. جلب الرصيد الحالي داخل الترانزاكشن
+    final List<Map<String, dynamic>> res = await txn.query(
+      'users',
+      columns: ['balance'],
+      where: 'id = ?',
+      whereArgs: [userId],
+    );
 
-  double currentBalance = await getUserBalance(userId);
-  
-  
-  if (amount < 0 && currentBalance + amount < 0) {
-    throw Exception("رصيدك الحالي لا يكفي لإتمام هذه العملية");
-  }
+    if (res.isEmpty) return;
 
-  await db.rawUpdate(
-    '''
-    UPDATE users
-    SET balance = balance + ?,
-        sync_status = 'pending'
-    WHERE id = ?
-    ''',
-    [amount, userId],
-  );
+    double current = (res.first['balance'] as num).toDouble();
+
+    // 2. التحقق: إذا كان المبلغ المطلوب خصمه (amount سالب) أكبر من الرصيد المتوفر
+    if (amount < 0 && (current + amount) < 0) {
+      throw Exception("عذراً، رصيدك الحالي ($current ₪) لا يكفي");
+    }
+
+    // 3. التحديث إذا نجح الفحص
+    await txn.rawUpdate(
+      '''
+      UPDATE users
+      SET balance = balance + ?,
+          sync_status = 'pending'
+      WHERE id = ?
+      ''',
+      [amount, userId],
+    );
+  });
 }
 
   Future<void> saveOutgoingTransaction({
