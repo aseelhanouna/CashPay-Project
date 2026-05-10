@@ -35,7 +35,7 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
     if (mounted) setState(() => currentBalance = balance);
   }
 
-  Future<void> _generateQR() async {
+ Future<void> _generateQR() async {
   if (_isGenerating) return;
 
   final amount = double.tryParse(_amountController.text.trim());
@@ -53,22 +53,25 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
   setState(() => _isGenerating = true);
 
   try {
-
-    
-
-    final String qrJson =
-        await TransactionService.generateTransferToken(
+    // 1. توليد التوكن المشفر
+    final String qrJson = await TransactionService.generateTransferToken(
       senderId: widget.userId,
       amount: amount,
     );
-  await DatabaseHelper.instance.addTransaction(
-  senderId: widget.userId,
-  receiverId: 0,
-  amount: amount,
-  type: 'send',
-);
 
-    // 🔄 إعادة تحميل الرصيد الحقيقي
+    // 2. تحديث الرصيد في قاعدة البيانات (خصم المبلغ)
+    // نستخدم قيمة سالبة للخصم
+    await DatabaseHelper.instance.updateBalance(widget.userId, -amount);
+
+    // 3. تسجيل العملية في جدول العمليات (استخدام الأسماء الصحيحة للأعمدة)
+    await DatabaseHelper.instance.addTransaction(
+      senderId: widget.userId,
+      receiverId: 0, // 0 تعني لم يتم المسح بعد
+      amount: amount,
+      type: 'send',
+    );
+
+    // 4. إعادة تحميل الرصيد في الواجهة بعد الخصم
     await _loadBalance();
 
     if (mounted) {
@@ -76,21 +79,15 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
         _qrData = qrJson;
       });
     }
-
   } catch (e) {
-
-    
-
-    _showError(
-      e.toString().replaceFirst("Exception: ", ""),
-    );
-
+    _showError(e.toString().replaceFirst("Exception: ", ""));
   } finally {
     if (mounted) {
       setState(() => _isGenerating = false);
     }
   }
 }
+
 
   void _showError(String message) {
     if (!mounted) return;
