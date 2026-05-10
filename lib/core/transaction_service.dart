@@ -19,10 +19,7 @@ class TransactionService {
     await checkFraudLimit(senderId);
 
     final db = DatabaseHelper.instance;
-    final balance = await db.getUserBalance(senderId);
-    if (balance < amount) {
-      throw Exception("الرصيد غير كافي");
-    }
+    
 
     final String txId =
         "TX_${senderId}_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(99999)}";
@@ -38,14 +35,8 @@ class TransactionService {
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
-    await db.saveCompletedOutgoingTransaction(
-  txId: txId,
-  senderId: senderId,
-  amount: amount,
-  signature: signature,
-  timestamp: timestamp,
-);
-    await db.updateUserBalance(senderId, balance - amount);
+    
+    
     debugPrint("Transaction generated: $txId | amount: $amountStr");
 
     return jsonEncode({
