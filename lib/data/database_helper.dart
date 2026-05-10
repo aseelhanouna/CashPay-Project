@@ -340,6 +340,14 @@ class DatabaseHelper {
  Future<void> updateBalance(int userId, double amount) async {
   final db = await database;
 
+
+  double currentBalance = await getUserBalance(userId);
+  
+  
+  if (amount < 0 && currentBalance + amount < 0) {
+    throw Exception("رصيدك الحالي لا يكفي لإتمام هذه العملية");
+  }
+
   await db.rawUpdate(
     '''
     UPDATE users
@@ -350,6 +358,7 @@ class DatabaseHelper {
     [amount, userId],
   );
 }
+
   Future<void> saveOutgoingTransaction({
     required String txId,
     required int senderId,
@@ -407,15 +416,19 @@ Future<void> addTransaction({
   required double amount,
   required String type,
 }) async {
-
   final db = await database;
 
   await db.insert('transactions', {
-    'senderId': senderId,
-    'receiverId': receiverId,
+    'sender_id': senderId,    
+    'receiver_id': receiverId,
     'amount': amount,
     'type': type,
+    'tx_id': DateTime.now().millisecondsSinceEpoch.toString(), 
+    'status': 'completed', 
+    'signature': 'manual',
+    'created_at': DateTime.now().millisecondsSinceEpoch, 
     'timestamp': DateTime.now().millisecondsSinceEpoch,
   });
 }
+
 }
