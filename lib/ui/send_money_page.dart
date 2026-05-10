@@ -65,6 +65,12 @@ class _SendMoneyPageState extends State<SendMoneyPage> {
       senderId: widget.userId,
       amount: amount,
     );
+  await DatabaseHelper.instance.addTransaction(
+  senderId: widget.userId,
+  receiverId: 0,
+  amount: amount,
+  type: 'send',
+);
 
     // 🔄 إعادة تحميل الرصيد الحقيقي
     await _loadBalance();
