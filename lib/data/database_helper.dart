@@ -392,4 +392,21 @@ Future<void> saveCompletedOutgoingTransaction({
     },
   );
 }
+Future<void> addTransaction({
+  required int senderId,
+  required int receiverId,
+  required double amount,
+  required String type,
+}) async {
+
+  final db = await database;
+
+  await db.insert('transactions', {
+    'senderId': senderId,
+    'receiverId': receiverId,
+    'amount': amount,
+    'type': type,
+    'timestamp': DateTime.now().millisecondsSinceEpoch,
+  });
+}
 }
