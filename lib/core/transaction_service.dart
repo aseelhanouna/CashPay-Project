@@ -35,6 +35,31 @@ class TransactionService {
 
     final String signature = CryptoHelper.sign(rawData, senderId);
 
+final balance = await db.getUserBalance(senderId);
+if (balance < amount) {
+  throw Exception("الرصيد غير كافي");
+}
+
+await db.updateBalance(senderId, -amount);
+
+await db.saveCompletedOutgoingTransaction(
+  txId: txId,
+  senderId: senderId,
+  amount: amount,
+  signature: signature,
+  timestamp: timestamp,
+);
+
+debugPrint("Transaction generated: $txId | amount: $amountStr");
+
+return jsonEncode({
+  "tx_id": txId,
+  "sender_id": senderId,
+  "amount": amountStr,
+  "timestamp": timestamp,
+  "signature": signature,
+});
+
     
     
     debugPrint("Transaction generated: $txId | amount: $amountStr");
