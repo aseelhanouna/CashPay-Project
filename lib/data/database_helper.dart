@@ -340,7 +340,19 @@ class DatabaseHelper {
     ''', [newBalance, userId]);
     debugPrint("تم تحديث الرصيد للمستخدم $userId إلى $newBalance");
   }
+ Future<void> updateBalance(int userId, double amount) async {
+  final db = await database;
 
+  await db.rawUpdate(
+    '''
+    UPDATE users
+    SET balance = balance + ?,
+        sync_status = 'pending'
+    WHERE id = ?
+    ''',
+    [amount, userId],
+  );
+}
   Future<void> saveOutgoingTransaction({
     required String txId,
     required int senderId,
