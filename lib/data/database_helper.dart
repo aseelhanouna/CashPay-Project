@@ -142,7 +142,8 @@ class DatabaseHelper {
   }
 
    
-  Future<void> receiveTokens({
+   
+Future<void> receiveTokens({
   required String txId,
   required int senderId,
   required int receiverId,
@@ -172,33 +173,15 @@ class DatabaseHelper {
       throw Exception("انتهت صلاحية الرمز");
     }
 
-    // 3. التحقق من رصيد المرسل ✅
-    final senderResult = await txn.query(
-      'users',
-      columns: ['balance'],
-      where: 'id = ?',
-      whereArgs: [senderId],
-    );
-    if (senderResult.isEmpty) throw Exception("المرسل غير موجود");
+    // ❌ شيل التحقق من رصيد المرسل - جهاز المستقبل مش عنده بياناته
 
-    double senderBalance = (senderResult.first['balance'] as num).toDouble();
-    if (senderBalance < amount) {
-      throw Exception("رصيد المرسل غير كافٍ");
-    }
-
-    // 4. خصم من المرسل ✅
-    await txn.rawUpdate(
-      'UPDATE users SET balance = balance - ? WHERE id = ?',
-      [amount, senderId],
-    );
-
-    // 5. إضافة للمستقبل ✅
+    // 3. إضافة للمستقبل ✅
     await txn.rawUpdate(
       'UPDATE users SET balance = balance + ? WHERE id = ?',
       [amount, receiverId],
     );
 
-    // 6. تسجيل عملية وحدة بس ✅
+    // 4. تسجيل العملية ✅
     await txn.insert('transactions', {
       'tx_id': txId,
       'sender_id': senderId,
@@ -213,6 +196,7 @@ class DatabaseHelper {
     });
   });
 }
+    
   Future<double> getUserBalance(int userId) async {
     final db = await database;
     final result = await db.query(
