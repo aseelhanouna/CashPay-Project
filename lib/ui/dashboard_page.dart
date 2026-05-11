@@ -46,25 +46,26 @@ Future<void> _loadUserData() async {
   setState(() => _isLoading = true);
 
   try {
-    // 1. جلب الرصيد المحلي أولاً وعرضه فوراً
+  
     double localBalance = await DatabaseHelper.instance.getUserBalance(widget.userId);
     if (mounted) {
       setState(() {
         _balance = localBalance;
-        _isLoading = false;
       });
     }
 
-    // 2. محاولة التحديث من السيرفر فقط إذا وجد إنترنت
+  
+    await SyncService.syncTransactions(widget.userId);
+
+   
     DocumentSnapshot userDoc = await FirebaseFirestore.instance
         .collection("users")
         .doc(widget.userId.toString())
-        .get(const GetOptions(source: Source.server)); // إجبار الجلب من السيرفر وليس الكاش
+        .get(const GetOptions(source: Source.server));
 
     if (userDoc.exists && mounted) {
       double serverBalance = (userDoc.data() as Map<String, dynamic>)['balance']?.toDouble() ?? 100.0;
-      
-      // لا تحدث القيمة المحلية إلا إذا كان هناك فرق (منع الوميض في الواجهة)
+
       if (serverBalance != localBalance) {
         setState(() {
           _balance = serverBalance;
@@ -73,10 +74,12 @@ Future<void> _loadUserData() async {
       }
     }
   } catch (e) {
-    debugPrint("أنت تعمل حالياً بالوضع الأوفلاين: يتم عرض الرصيد المحلي.");
+    debugPrint("أوفلاين: نعتمد على الرصيد المحلي فقط.");
+  } finally {
     if (mounted) setState(() => _isLoading = false);
   }
 }
+
 
 
   @override
