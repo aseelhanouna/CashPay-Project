@@ -153,49 +153,36 @@ Future<void> receiveTokens({
 }) async {
   final db = await database;
 
-  if (await SessionManager.isBlocked()) {
-    throw Exception("التطبيق مقفل مؤقتاً");
-  }
-
   await db.transaction((txn) async {
+    
+    final existing = await txn.query('transactions', where: 'tx_id = ?', whereArgs: [txId]);
+    if (existing.isNotEmpty) throw Exception("الرمز مستخدم مسبقاً");
 
-    // 1. منع التكرار
-    final existing = await txn.query(
-      'transactions',
-      where: 'tx_id = ?',
-      whereArgs: [txId],
-    );
-    if (existing.isNotEmpty) throw Exception("تم استخدام الرمز مسبقاً");
-
-    // 2. صلاحية QR
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if ((now - timestamp).abs() > 5 * 60 * 1000) {
-      throw Exception("انتهت صلاحية الرمز");
-    }
-
-    // ❌ شيل التحقق من رصيد المرسل - جهاز المستقبل مش عنده بياناته
-
-    // 3. إضافة للمستقبل ✅
-    await txn.rawUpdate(
+    
+    int count = await txn.rawUpdate(
       'UPDATE users SET balance = balance + ? WHERE id = ?',
       [amount, receiverId],
     );
 
-    // 4. تسجيل العملية ✅
+    
+    if (count == 0) throw Exception("فشل تحديث الرصيد للمستخدم رقم $receiverId");
+
+  
     await txn.insert('transactions', {
       'tx_id': txId,
-      'sender_id': senderId,
+      'sender_id': senderId, 
       'receiver_id': receiverId,
       'amount': amount,
-      'type': 'transfer',
+      'type': 'receive', 
       'status': 'completed',
       'signature': signature,
-      'created_at': now,
+      'created_at': DateTime.now().millisecondsSinceEpoch,
       'timestamp': timestamp,
       'sync_status': 'pending',
     });
   });
 }
+
     
   Future<double> getUserBalance(int userId) async {
     final db = await database;
@@ -223,18 +210,22 @@ Future<void> receiveTokens({
   }
 
   Future<List<Map<String, dynamic>>> getUserTransactions(int userId) async {
-    final db = await database;
-    return await db.rawQuery('''
-      SELECT t.*,
-        sender.name AS sender_name,
-        receiver.name AS receiver_name
-      FROM transactions t
-      LEFT JOIN users sender ON sender.id = t.sender_id
-      LEFT JOIN users receiver ON receiver.id = t.receiver_id
-      WHERE (t.sender_id = ? OR t.receiver_id = ?) AND t.status = 'completed'
-      ORDER BY t.created_at DESC
-    ''', [userId, userId]);
-  }
+  final db = await database;
+  return await db.rawQuery('''
+    SELECT t.*,
+      -- إذا لم يجد اسم المرسل محلياً، يكتب "مرسل (رقم المعرف)"
+      IFNULL(sender.name, 'مرسل رقم: ' || t.sender_id) AS sender_name,
+      -- إذا لم يجد اسم المستقبل محلياً، يكتب "مستقبل (رقم المعرف)"
+      IFNULL(receiver.name, 'مستقبل رقم: ' || t.receiver_id) AS receiver_name
+    FROM transactions t
+    LEFT JOIN users sender ON sender.id = t.sender_id
+    LEFT JOIN users receiver ON receiver.id = t.receiver_id
+    WHERE (t.sender_id = ? OR t.receiver_id = ?) 
+      AND t.status = 'completed'
+    ORDER BY t.created_at DESC
+  ''', [userId, userId]);
+}
+
 
   Future<bool> isTransactionExists(String txId) async {
     final db = await database;
