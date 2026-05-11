@@ -10,27 +10,24 @@ class SyncService {
     await syncUserProfile(userId);
   }
 
-  static Future<void> syncTransactions(int userId) async {
+    static Future<void> syncTransactions(int userId) async {
     final db = DatabaseHelper.instance;
     final pending = await db.getPendingTransactions();
 
-    if (pending.isEmpty) {
-      debugPrint("✅ لا توجد عمليات معلقة للمزامنة.");
-      return;
-    }
+    if (pending.isEmpty) return;
 
     for (var tx in pending) {
       try {
+        // استخدمي writeBatch إذا كانت العمليات كثيرة، لكن حالياً الكود سليم
         await FirebaseFirestore.instance
-            .collection("users")
-            .doc(userId.toString())
-            .collection("transactions")
+            .collection("transactions") // يفضل وضع كل العمليات في كولكشن موحد للبحث لاحقاً
             .doc(tx["tx_id"])
             .set({
               ...tx,
               "synced_at": FieldValue.serverTimestamp(),
             });
 
+        // تحديث رصيد المستخدم في السيرفر بناءً على هذه العملية
         final bool isSender = tx['sender_id'] == userId;
         final double amount = (tx['amount'] as num).toDouble();
         final double balanceDelta = isSender ? -amount : amount;
@@ -39,17 +36,18 @@ class SyncService {
             .collection("users")
             .doc(userId.toString())
             .update({
-          "balance": FieldValue.increment(balanceDelta),
-        });
+              "balance": FieldValue.increment(balanceDelta),
+            });
 
         await db.markAsSynced(tx["tx_id"]);
-        debugPrint("✅ تمت مزامنة العملية: ${tx["tx_id"]}");
-
       } catch (e) {
-        debugPrint("❌ خطأ في مزامنة العملية ${tx["tx_id"]}: $e");
+        debugPrint("❌ فشل رفع العملية ${tx["tx_id"]}: $e");
+        // لا تكمل المزامنة إذا انقطع الإنترنت تماماً
+        break; 
       }
     }
   }
+
 
   static Future<void> syncUserProfile(int userId) async {
     try {
