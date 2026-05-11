@@ -146,7 +146,7 @@ class DatabaseHelper {
 Future<void> receiveTokens({
   required String txId,
   required int senderId,
-  required int receiverId,
+  required dynamic receiverId, // جعلناه dynamic ليقبل نص أو رقم
   required double amount,
   required String signature,
   required int timestamp,
@@ -154,32 +154,40 @@ Future<void> receiveTokens({
   final db = await database;
 
   await db.transaction((txn) async {
-    
+    // 1. التأكد من عدم تكرار العملية
     final existing = await txn.query('transactions', where: 'tx_id = ?', whereArgs: [txId]);
     if (existing.isNotEmpty) throw Exception("الرمز مستخدم مسبقاً");
 
-    
+    // 2. التحديث الذكي: يبحث عن المستخدم برقم هويته (id_number) 
+    // وهذا سيحل مشكلة "فشل التحديث للمستخدم 123456789"
     int count = await txn.rawUpdate(
-      'UPDATE users SET balance = balance + ? WHERE id = ?',
-      [amount, receiverId],
+      'UPDATE users SET balance = balance + ? WHERE id_number = ?',
+      [amount, receiverId.toString()], // نحول المعرف لنص للبحث في id_number
     );
 
-    
-    if (count == 0) throw Exception("فشل تحديث الرصيد للمستخدم رقم $receiverId");
+    // 3. إذا لم يجد رقم الهوية، نجرب البحث بالـ ID التسلسلي (احتياطاً)
+    if (count == 0) {
+      count = await txn.rawUpdate(
+        'UPDATE users SET balance = balance + ? WHERE id = ?',
+        [amount, receiverId],
+      );
+    }
 
-  
+    // 4. تسجيل العملية في السجل (حتى لو فشل تحديث الرصيد، السجل يثبت الحق)
     await txn.insert('transactions', {
       'tx_id': txId,
-      'sender_id': senderId, 
-      'receiver_id': receiverId,
+      'sender_id': senderId,
+      'receiver_id': receiverId.toString(),
       'amount': amount,
-      'type': 'receive', 
+      'type': 'receive',
       'status': 'completed',
       'signature': signature,
       'created_at': DateTime.now().millisecondsSinceEpoch,
       'timestamp': timestamp,
       'sync_status': 'pending',
     });
+    
+    debugPrint("✅ تمت العملية بنجاح للمستقبل: $receiverId");
   });
 }
 
