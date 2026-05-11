@@ -252,73 +252,69 @@ Future<void> _loadUserData() async {
   }
 
   Widget _buildTransactionsList(Color primaryColor) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: DatabaseHelper.instance.getRecentTransactions(widget.userId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.all(20),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.all(30),
-            child: Text("لا توجد عمليات بعد"),
-          );
-        }
-        return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: snapshot.data!.length,
-          separatorBuilder: (_, __) => const Divider(),
-          itemBuilder: (context, index) {
-            final tx = snapshot.data![index];
-            final bool isSent = tx['sender_id'] == widget.userId;
-            final DateTime date = DateTime.fromMillisecondsSinceEpoch(tx['created_at'] as int);
-            String twoDigits(int n) => n.toString().padLeft(2, '0');
-            final dateDisplay = "${twoDigits(date.day)}/${twoDigits(date.month)} - "
-                "${twoDigits(date.hour)}:${twoDigits(date.minute)}";
-            return Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: isSent
-                      ? Colors.red.withValues(alpha: 0.2)
-                      : Colors.green.withValues(alpha: 0.2),
-                  child: Icon(
-                    isSent ? Icons.call_made : Icons.call_received,
-                    color: isSent ? Colors.red : Colors.green,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isSent ? "إرسال" : "استلام",
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        dateDisplay,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-        Text(
-  "${isSent ? '-' : '+'}${tx['amount']} ₪",
-  style: TextStyle(
-    color: isSent ? Colors.red : Colors.green,
-    fontWeight: FontWeight.bold,
-  ),
-),
-                
-              ],
-            );
-          },
+  return FutureBuilder<List<Map<String, dynamic>>>(
+    // تأكدي أن الدالة في DatabaseHelper هي getUserTransactions
+    future: DatabaseHelper.instance.getUserTransactions(widget.userId), 
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Padding(
+          padding: EdgeInsets.all(20),
+          child: Center(child: CircularProgressIndicator()),
         );
-      },
-    );
-  }
-} 
+      }
+      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        return const Padding(
+          padding: EdgeInsets.all(30),
+          child: Text("لا توجد عمليات بعد"),
+        );
+      }
+      return ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: snapshot.data!.length > 5 ? 5 : snapshot.data!.length, // عرض آخر 5 فقط في الداشبورد
+        separatorBuilder: (_, __) => const Divider(),
+        itemBuilder: (context, index) {
+          final tx = snapshot.data![index];
+          final bool isSent = tx['sender_id'] == widget.userId;
+          
+          // استخدام الأسماء التي جلبناها من SQL بذكاء
+          final String displayName = isSent 
+              ? (tx['receiver_name'] ?? "مستقبل خارجي") 
+              : (tx['sender_name'] ?? "مرسل خارجي");
+
+          final DateTime date = DateTime.fromMillisecondsSinceEpoch(tx['created_at'] as int);
+          String twoDigits(int n) => n.toString().padLeft(2, '0');
+          final dateDisplay = "${twoDigits(date.day)}/${twoDigits(date.month)} - ${twoDigits(date.hour)}:${twoDigits(date.minute)}";
+
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(
+              backgroundColor: isSent ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+              child: Icon(
+                isSent ? Icons.call_made : Icons.call_received,
+                color: isSent ? Colors.red : Colors.green,
+              ),
+            ),
+            title: Text(
+              displayName,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              dateDisplay,
+              style: TextStyle(color: Colors.grey[600], fontSize: 11),
+            ),
+            trailing: Text(
+              "${isSent ? '-' : '+'}${tx['amount']} ₪",
+              style: TextStyle(
+                color: isSent ? Colors.red : Colors.green,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
